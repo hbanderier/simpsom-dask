@@ -41,11 +41,11 @@ class TestCupySom(unittest.TestCase):
             for j in range(5):
                 # checking weights normalization
                 np.testing.assert_almost_equal(
-                    1.0, np.linalg.norm(self.som._weights[i, j])
+                    1.0, np.linalg.norm(self.som.weights[i, j])
                 )
-        self.som._weights = np.zeros((5, 5, 1))  # fake weights
-        self.som._weights[2, 3] = 5.0
-        self.som._weights[1, 1] = 2.0
+        self.som.weights = np.zeros((5, 5, 1))  # fake weights
+        self.som.weights[2, 3] = 5.0
+        self.som.weights[1, 1] = 2.0
 
         np.random.seed(1234)
 
@@ -82,7 +82,7 @@ class TestCupySom(unittest.TestCase):
 
     def test_distance_from_weights(self):
         data = np.arange(-5, 5).reshape(-1, 1)
-        weights = self.som._weights.reshape(-1, self.som._weights.shape[2])
+        weights = self.som.weights.reshape(-1, self.som.weights.shape[2])
         distances = self.som.distance_from_weights(data, weights)
         for i in range(len(data)):
             for j in range(len(weights)):
@@ -95,11 +95,11 @@ class TestCupySom(unittest.TestCase):
     def test_topographic_error(self):
         # 5 will have bmu_1 in (2,3) and bmu_2 in (2, 4)
         # which are in the same neighborhood
-        self.som._weights[2, 4] = 6.0
+        self.som.weights[2, 4] = 6.0
         # 15 will have bmu_1 in (4, 4) and bmu_2 in (0, 0)
         # which are not in the same neighborhood
-        self.som._weights[4, 4] = 15.0
-        self.som._weights[0, 0] = 14.0
+        self.som.weights[4, 4] = 15.0
+        self.som.weights[0, 0] = 14.0
         assert self.som.topographic_error([[5]]) == 0.0
         assert self.som.topographic_error([[15]]) == 1.0
 
@@ -112,14 +112,14 @@ class TestCupySom(unittest.TestCase):
         som1 = XPySom(5, 5, 2, sigma=1.0, learning_rate=0.5, random_seed=1)
         som2 = XPySom(5, 5, 2, sigma=1.0, learning_rate=0.5, random_seed=1)
         # same initialization
-        np.testing.assert_array_almost_equal(som1._weights, som2._weights)
+        np.testing.assert_array_almost_equal(som1.weights, som2.weights)
         data = np.random.rand(100, 2)
         som1 = XPySom(5, 5, 2, sigma=1.0, learning_rate=0.5, random_seed=1)
         som1.train_random(data, 10)
         som2 = XPySom(5, 5, 2, sigma=1.0, learning_rate=0.5, random_seed=1)
         som2.train_random(data, 10)
         # same state after training
-        np.testing.assert_array_almost_equal(som1._weights, som2._weights)
+        np.testing.assert_array_almost_equal(som1.weights, som2.weights)
 
     def test_train(self):
         som = XPySom(5, 5, 2, sigma=1.0, learning_rate=0.5, random_seed=1)
@@ -136,7 +136,7 @@ class TestCupySom(unittest.TestCase):
     def test_random_weights_init(self):
         som = XPySom(2, 2, 2, random_seed=1)
         som.random_weights_init(np.array([[1.0, 0.0]]))
-        for w in som._weights:
+        for w in som.weights:
             np.testing.assert_array_equal(w[0], np.array([1.0, 0.0]))
 
     def test_pca_weights_init(self):
@@ -148,11 +148,11 @@ class TestCupySom(unittest.TestCase):
                 [[1.41421356, 0.0], [0.0, 1.41421356]],
             ]
         )
-        np.testing.assert_array_almost_equal(som._weights, expected)
+        np.testing.assert_array_almost_equal(som.weights, expected)
 
     def test_distance_map(self):
         som = XPySom(2, 2, 2, random_seed=1)
-        som._weights = np.array([[[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]])
+        som.weights = np.array([[[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]])
         np.testing.assert_array_equal(
             som.distance_map(), np.array([[1.0, 1.0], [1.0, 1.0]])
         )
@@ -302,11 +302,11 @@ class TestCupySomHex(unittest.TestCase):
             for j in range(5):
                 # checking weights normalization
                 np.testing.assert_almost_equal(
-                    1.0, np.linalg.norm(self.som._weights[i, j])
+                    1.0, np.linalg.norm(self.som.weights[i, j])
                 )
-        self.som._weights = np.zeros((5, 5, 1))  # fake weights
-        self.som._weights[2, 3] = 5.0
-        self.som._weights[1, 1] = 2.0
+        self.som.weights = np.zeros((5, 5, 1))  # fake weights
+        self.som.weights[2, 3] = 5.0
+        self.som.weights[1, 1] = 2.0
 
         np.random.seed(1234)
 

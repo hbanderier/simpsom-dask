@@ -70,7 +70,7 @@ def norm_p_power_distance_generic(x, w, p=2, xp=default_xp):
     NB: result shape is (N,X*Y)
     """
     return xp.sum(
-        xp.power(xp.abs(x[:, xp.newaxis, :] - w[xp.newaxis, :, :]), p), axis=2
+        xp.power(xp.abs(x[:, xp.newaxis] - w[xp.newaxis, :]), p), axis=2
     )
 
 
@@ -128,7 +128,7 @@ def manhattan_distance_cuda(x, w, xp=default_xp):
     if xp.__name__ != "cupy":
         raise ValueError("This function only works with cupy")
 
-    return _manhattan_distance_kernel(x[:, xp.newaxis, :], w[xp.newaxis, :, :], axis=2)
+    return _manhattan_distance_kernel(x[:, xp.newaxis], w[xp.newaxis, :], axis=1)
 
 
 def manhattan_distance_no_opt(x, w, xp=default_xp):
@@ -179,10 +179,8 @@ class DistanceFunction:
         ]
 
     def __call__(self, x, w, w_flat_sq=None, xp=np):
-        w_flat = w.reshape(-1, w.shape[2])
-
         self.__kwargs["xp"] = xp
         if w_flat_sq is not None:
-            return self.__distance_function(x, w_flat, w_flat_sq, **self.__kwargs)
+            return self.__distance_function(x, w, w_flat_sq, **self.__kwargs)
         else:
-            return self.__distance_function(x, w_flat, **self.__kwargs)
+            return self.__distance_function(x, w, **self.__kwargs)

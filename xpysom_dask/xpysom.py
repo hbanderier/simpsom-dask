@@ -1,7 +1,9 @@
 from math import sqrt, ceil
 from collections import defaultdict
+from functools import partial
 from warnings import warn
 from collections import defaultdict, Counter
+from typing import Callable, Iterable, Sequence, Literal
 from warnings import warn
 from sys import stdout
 from time import time
@@ -20,7 +22,7 @@ try:
 
     default_xp = cp
     GPU_SUPPORTED = True
-except:
+except ModuleNotFoundError:
     print("WARNING: CuPy could not be imported")
     default_xp = np
     GPU_SUPPORTED = False
@@ -32,20 +34,18 @@ try:
     import dask.dataframe as ddf
 
     default_da = True
-except:
+except ModuleNotFoundError:
     print("WARNING: Dask Arrays could not be imported")
     default_da = False
+    
+try:
+    from dask_ml.decomposition import PCA
+except ModuleNotFoundError:
+    from sklearn.decomposition import PCA
+
 
 from .distances import DistanceFunction, euclidean_distance
-from .neighborhoods import (
-    gaussian_generic,
-    gaussian_rect,
-    mexican_hat_generic,
-    mexican_hat_rect,
-    bubble,
-    triangle,
-    prepare_neig_func,
-)
+from .neighborhoods import Neighborhoods
 from .utils import find_cpu_cores, find_max_cuda_threads
 from .decays import linear_decay, asymptotic_decay, exponential_decay
 
@@ -95,8 +95,11 @@ class XPySom:
         neighborhood_function="gaussian",
         std_coeff=0.5,
         topology="rectangular",
+        inner_dist_type: str | Sequence[str] = "grid",
+        PBC: bool = False,
         activation_distance="euclidean",
         activation_distance_kwargs={},
+        init: Literal["random", "pca"] = "random",
         random_seed=None,
         n_parallel=0,
         compact_support=False,
@@ -143,7 +146,7 @@ class XPySom:
 
         neighborhood_function : string, optional (default='gaussian')
             Function that weights the neighborhood of a position in the map.
-            Possible values: 'gaussian', 'mexican_hat', 'bubble', 'triangle'
+            Possible values: 'gaussian', 'mexican_hat', 'bubble'
 
         topology : string, optional (default='rectangular')
             Topology of the map.
@@ -188,7 +191,7 @@ class XPySom:
         if sigma >= x or sigma >= y:
             warn("Warning: sigma is too high for the dimension of the map.")
 
-        self._random_generator = np.random.RandomState(random_seed)
+        self._random_generator = np.random.default_rng(random_seed)
 
         self.xp = xp
 
@@ -209,30 +212,39 @@ class XPySom:
         self._sigmaN = sigmaN
         self._input_len = input_len
 
-        # random initialization
-        self._weights = self._random_generator.rand(x, y, input_len) * 2 - 1
-        self._weights /= np.linalg.norm(self._weights, axis=-1, keepdims=True)
+        self.x = x
+        self.y = y
+        self.PBC = PBC
+        self.n_nodes = x * y
+        self.nodes = self.xp.arange(self.n_nodes)
+        self.init = init
 
-        # used to evaluate the neighborhood function
-        self._neigx = self.xp.arange(x)
-        self._neigy = self.xp.arange(y)
+        if topology.lower() == "hexagonal":
+            self.polygons = "Hexagons"
+        else:
+            self.polygons = "Squares"
 
-        if topology not in ["hexagonal", "rectangular"]:
-            msg = "%s not supported only hexagonal and rectangular available"
-            raise ValueError(msg % topology)
+        self.inner_dist_type = inner_dist_type
 
-        self.topology = topology
-        self._xx, self._yy = self.xp.meshgrid(self._neigx, self._neigy)
-        self._xx = self._xx.astype(float)
-        self._yy = self._yy.astype(float)
+        self.neighborhood_function = neighborhood_function.lower()
+        if self.neighborhood_function not in ["gaussian", "mexican_hat", "bubble"]:
+            print(
+                "{} neighborhood function not recognized.".format(self.neighborhood_function)
+                + "Choose among 'gaussian', 'mexican_hat' or 'bubble'."
+            )
+            raise ValueError
 
-        if topology == "hexagonal":
-            self._xx[::-2] -= 0.5
-            if neighborhood_function in ["triangle"]:
-                warn(
-                    "triangle neighborhood function does not "
-                    + "take in account hexagonal topology"
-                )
+        self.neighborhoods = Neighborhoods(
+            self.x,
+            self.y,
+            self.polygons,
+            self.inner_dist_type,
+            self.PBC,
+        )
+        self.neighborhood_caller = partial(
+            self.neighborhoods.neighborhood_caller,
+            neigh_func=self.neighborhood_function,
+        )
 
         decay_functions = {
             "exponential": exponential_decay,
@@ -247,17 +259,6 @@ class XPySom:
         self._decay_function = decay_functions[decay_function]
 
         self.compact_support = compact_support
-
-        neig_functions = self.get_neig_functions()
-
-        if neighborhood_function not in neig_functions:
-            msg = "%s not supported. Functions available: %s"
-            raise ValueError(
-                msg % (neighborhood_function, ", ".join(neig_functions.keys()))
-            )
-
-        self.neighborhood = neig_functions[neighborhood_function]
-        self.neighborhood_func_name = neighborhood_function
 
         self._activation_distance_name = activation_distance
         self._activation_distance_kwargs = activation_distance_kwargs
@@ -284,58 +285,23 @@ class XPySom:
 
         self._sq_weights_gpu = None
 
-    def get_neig_functions(self):
-        """
-        Returns a dictionary (func_name, prepared_func)
-        Call this only after setting neigx, neigy, xx, yy.
-        """
-        if self.topology == "rectangular":
-            neig_functions = {
-                "gaussian": prepare_neig_func(
-                    gaussian_rect,
-                    self._neigx,
-                    self._neigy,
-                    self._std_coeff,
-                    self.compact_support,
-                ),
-                "mexican_hat": prepare_neig_func(
-                    mexican_hat_rect,
-                    self._neigx,
-                    self._neigy,
-                    self._std_coeff,
-                    self.compact_support,
-                ),
-                "bubble": prepare_neig_func(bubble, self._neigx, self._neigy),
-                "triangle": prepare_neig_func(
-                    triangle, self._neigx, self._neigy, self.compact_support
-                ),
-            }
-        elif self.topology == "hexagonal":
-            neig_functions = {
-                "gaussian": prepare_neig_func(
-                    gaussian_generic,
-                    self._xx,
-                    self._yy,
-                    self._std_coeff,
-                    self.compact_support,
-                ),
-                "mexican_hat": prepare_neig_func(
-                    mexican_hat_generic,
-                    self._xx,
-                    self._yy,
-                    self._std_coeff,
-                    self.compact_support,
-                ),
-                "bubble": prepare_neig_func(bubble, self._neigx, self._neigy),
-            }
+    def _init_weights(self, data) -> None:
+        if self.init == "pca":
+            init_vec = PCA(2).fit_transform(data)
         else:
-            neig_functions = {}
-
-        return neig_functions
+            init_vec = [
+                data.min(axis=0),
+                data.max(axis=0),
+            ]
+        self.weights = (
+            init_vec[0][None, :]
+            + (init_vec[1] - init_vec[0])[None, :]
+            * np.random.rand(self.n_nodes, *init_vec[0].shape)
+        ).astype(np.float32)
 
     def get_weights(self):
         """Returns the weights of the neural network."""
-        return self._weights
+        return self.weights
 
     def get_euclidean_coordinates(self):
         """Returns the position of the neurons on an euclidean
@@ -345,34 +311,12 @@ class XPySom:
 
         Only useful if the topology chosen is not rectangular.
         """
-        if GPU_SUPPORTED:
-            if isinstance(self._xx.T, cp.ndarray) and isinstance(
-                self._yy.T, cp.ndarray
-            ):
-                # I need to transfer them to host
-                return self._xx.T.get(), self._yy.T.get()
-
-        return self._xx.T, self._yy.T
-
-    def convert_map_to_euclidean(self, xy):
-        """Converts map coordinates into euclidean coordinates
-        that reflects the chosen topology.
-
-        Only useful if the topology chosen is not rectangular.
-        """
-        if GPU_SUPPORTED:
-            if isinstance(self._xx.T, cp.ndarray) and isinstance(
-                self._yy.T, cp.ndarray
-            ):
-                # I need to transfer them to host
-                return self._xx.T.get()[xy], self._yy.T.get()[xy]
-
-        return self._xx.T[xy], self._yy.T[xy]
+        return self.neighborhood.coordinates
 
     def activate(self, x):
         """Returns the activation map to x."""
         x_gpu = self.xp.array(x)
-        weights_gpu = self.xp.array(self._weights)
+        weights_gpu = self.xp.array(self.weights)
 
         self._activate(x_gpu, weights_gpu)
 
@@ -406,80 +350,40 @@ class XPySom:
         if self._input_len != data_len:
             msg = "Received %d features, expected %d." % (data_len, self._input_len)
             raise ValueError(msg)
+        
+    def _update_rates(self, iteration, num_epochs):
+        self.learning_rate = self._decay_function(
+            self._learning_rate, self._learning_rateN, iteration, num_epochs
+        )
+        self.sigma = self._decay_function(self._sigma, self._sigmaN, iteration, num_epochs)
 
-    def winner(self, x):
-        """Computes the coordinates of the winning neurons for the samples x."""
-
-        if self.use_dask:
-            x_gpu = da.from_array(self.xp.array(x))
-        else:
-            x_gpu = self.xp.array(x)
-
-        weights_gpu = self.xp.array(self._weights)
-
-        orig_shape = x_gpu.shape
-        if len(orig_shape) == 1:
-            if isinstance(x_gpu, da.core.Array):
-                x_gpu = da.expand_dims(x_gpu, axis=0).compute()
-            else:
-                x_gpu = self.xp.expand_dims(x_gpu, axis=0)
-
-        winners_chunks = []
-        for i in range(0, len(x), self._n_parallel):
-            start = i
-            end = start + self._n_parallel
-            if end > len(x):
-                end = len(x)
-
-            chunk = self._winner(x_gpu[start:end], weights_gpu)
-            winners_chunks.append(self.xp.vstack(chunk))
-
-        winners_gpu = self.xp.hstack(winners_chunks)
-
-        if GPU_SUPPORTED and isinstance(winners_gpu, cp.ndarray):
-            winners = winners_gpu.get()
-        else:
-            winners = winners_gpu
-
-        if len(orig_shape) == 1:
-            return (winners[0].item(), winners[1].item())
-        else:
-            return list(map(tuple, winners.T))
-
-    def _winner(self, x_gpu, winners_gpu):
-        """Computes the coordinates of the winning neuron for the sample x"""
+    def _winner(self, x_gpu, weights_gpu):
+        """Computes the index of the winning neuron for the sample x"""
         if len(x_gpu.shape) == 1:
             x_gpu = self.xp.expand_dims(x_gpu, axis=0)
 
-        self._activate(x_gpu, winners_gpu)
+        self._activate(x_gpu, weights_gpu)
         raveled_idxs = self._activation_map_gpu.argmin(axis=1)
-        return (
-            self._unravel_precomputed[0][raveled_idxs],
-            self._unravel_precomputed[1][raveled_idxs],
-        )
+        return raveled_idxs
 
-    def _update(self, x_gpu, weights_gpu, eta, sig):
-        """Updates the numerator and denominator accumulators.
+    def _update(self, x_gpu, weights_gpu):
+        
+        pre_numerator = self.xp.zeros(self.weights.shape, dtype=self.xp.float32)
 
-        Parameters
-        ----------
-        x : np.array
-            Current pattern to learn
-        t : int
-            Iteration index
-        """
-        weights_gpu = self.xp.asarray(weights_gpu)
+        weights_gpu = self.xp.asarray(weights_gpu) # (X * Y, len)
 
-        wins = self._winner(x_gpu, weights_gpu)
+        winners = self._winner(x_gpu, weights_gpu) # (N), xp
+        
+        series = winners[:, None] == self.nodes[None, :] # (N, X * Y), xp
+        pop = self.xp.sum(series, axis=0, dtype=np.float32)
+        
+        for i, s in enumerate(series.T):
+            pre_numerator[i, :] = self.xp.sum(x_gpu[s], axis=0)
+        
+        h = self.xp.asarray(self.neighborhood_caller(sigma=self.sigma)) # (X * Y, X * Y), xp
 
-        g_gpu = self.neighborhood(wins, sig, xp=self.xp) * eta
-
-        sum_g_gpu = self.xp.sum(g_gpu, axis=0)
-        g_flat_gpu = g_gpu.reshape(g_gpu.shape[0], -1)
-        gT_dot_x_flat_gpu = self.xp.dot(g_flat_gpu.T, x_gpu)
-
-        _numerator_gpu = gT_dot_x_flat_gpu.reshape(weights_gpu.shape)
-        _denominator_gpu = sum_g_gpu[:, :, self.xp.newaxis]
+        _numerator_gpu = self.xp.dot(h, pre_numerator)
+        _denominator_gpu = self.xp.dot(h, pop)[:, None]
 
         return (_numerator_gpu, _denominator_gpu)
 
@@ -515,11 +419,14 @@ class XPySom:
             If True the status of the training
             will be printed at each iteration.
         """
+        
+        self._init_weights(data)
+        
         if iter_end is None:
             iter_end = num_epochs
 
         # Copy arrays to device
-        weights_gpu = self.xp.asarray(self._weights, dtype=self.xp.float32)
+        weights_gpu = self.xp.asarray(self.weights, dtype=self.xp.float32)
 
         if GPU_SUPPORTED and isinstance(data, cudf.core.dataframe.DataFrame):
             data_gpu = data.to_cupy(dtype=self.xp.float32)
@@ -555,23 +462,14 @@ class XPySom:
                 denominator_gpu.fill(0)
             except UnboundLocalError:  # whoops, I haven't allocated it yet
                 numerator_gpu = self.xp.zeros(weights_gpu.shape, dtype=self.xp.float32)
-                denominator_gpu = self.xp.zeros(
-                    (weights_gpu.shape[0], weights_gpu.shape[1], 1),
-                    dtype=self.xp.float32,
-                )
+                denominator_gpu = self.xp.zeros(weights_gpu.shape, dtype=self.xp.float32)
 
             if self._activation_distance.can_cache:
-                self._sq_weights_gpu = self.xp.power(
-                    weights_gpu.reshape(-1, weights_gpu.shape[2]), 2
-                ).sum(axis=1, keepdims=True)
+                self._sq_weights_gpu = self.xp.power(weights_gpu, 2).sum(axis=1, keepdims=True)
             else:
                 self._sq_weights_gpu = None
 
-            eta = self._decay_function(
-                self._learning_rate, self._learning_rateN, iteration, num_epochs
-            )
-            # sigma and learning rate decrease with the same rule
-            sig = self._decay_function(self._sigma, self._sigmaN, iteration, num_epochs)
+            self._update_rates(iteration, num_epochs)
 
             if self.use_dask:
                 blocks = data_gpu_block.to_delayed().ravel()
@@ -580,7 +478,7 @@ class XPySom:
                 denominator_gpu_array = []
                 for block in blocks:
                     a, b = dask.delayed(self._update, nout=2)(
-                        block, weights_gpu, eta, sig
+                        block, weights_gpu
                     )
                     numerator_gpu_array.append(a)
                     denominator_gpu_array.append(b)
@@ -598,7 +496,7 @@ class XPySom:
                     if end > len(data):
                         end = len(data)
 
-                    a, b = self._update(data_gpu[start:end], weights_gpu, eta, sig)
+                    a, b = self._update(data_gpu[start:end], weights_gpu)
 
                     numerator_gpu += a
                     denominator_gpu += b
@@ -608,15 +506,18 @@ class XPySom:
                             iteration * len(data) + end - 1, num_epochs * len(data)
                         )
 
-            weights_gpu = self._merge_updates(
+            new_weights = self._merge_updates(
                 weights_gpu, numerator_gpu, denominator_gpu
             )
+            
+            weights_gpu = (1 - self.learning_rate) * weights_gpu + self.learning_rate * new_weights
+            weights_gpu = weights_gpu.astype(np.float32)
 
         # Copy back arrays to host
         if GPU_SUPPORTED and isinstance(weights_gpu, cp.ndarray):
-            self._weights = weights_gpu.get()
+            self.weights = weights_gpu.get()
         else:
-            self._weights = weights_gpu
+            self.weights = weights_gpu
 
         # free temporary memory
         self._sq_weights_gpu = None
@@ -639,29 +540,49 @@ class XPySom:
             "WARNING: due to batch SOM algorithm, random order is not supported. Falling back to train_batch."
         )
         return self.train(data, num_iteration, verbose=verbose)
+    
+    def predict(self, x):
+        """Computes the indices of the winning neurons for the samples x."""
 
-    def predict(self, data):
-        def _predict(data, xp):
-            shape = (self._weights.shape[0], self._weights.shape[1])
-            winner_coordinates = xp.array([self.winner(x) for x in data]).T
-            return xp.asarray(xp.ravel_multi_index(winner_coordinates, shape))
+        if self.use_dask:
+            x_gpu = da.from_array(self.xp.array(x))
+        else:
+            x_gpu = self.xp.array(x)
 
-        if default_da and isinstance(data, da.core.Array):
-            if self.use_dask:
-                return data.map_blocks(
-                    _predict,
-                    self.xp,
-                    dtype=self.xp.float32,
-                    meta=self.xp.array((), dtype=self.xp.float32),
-                )
-        return _predict(data, self.xp)
+        weights_gpu = self.xp.array(self.weights)
+
+        orig_shape = x_gpu.shape
+        if len(orig_shape) == 1:
+            if isinstance(x_gpu, da.core.Array):
+                x_gpu = da.expand_dims(x_gpu, axis=0).compute()
+            else:
+                x_gpu = self.xp.expand_dims(x_gpu, axis=0)
+
+        winners_chunks = []
+        for i in range(0, len(x), self._n_parallel):
+            start = i
+            end = start + self._n_parallel
+            if end > len(x):
+                end = len(x)
+
+            chunk = self._winner(x_gpu[start:end], weights_gpu)
+            winners_chunks.append(chunk)
+
+        winners_gpu = self.xp.hstack(winners_chunks)
+
+        if GPU_SUPPORTED and isinstance(winners_gpu, cp.ndarray):
+            winners = winners_gpu.get()
+        else:
+            winners = winners_gpu
+
+        return winners
 
     def quantization(self, data):
         """Assigns a code book (weights vector of the winning neuron)
         to each sample in data."""
 
         data_gpu = self.xp.array(data)
-        qnt = self._quantization(data_gpu, self.xp.array(self._weights))
+        qnt = self._quantization(data_gpu, self.xp.array(self.weights))
 
         if GPU_SUPPORTED and isinstance(qnt, cp.ndarray):
             return qnt.get()
@@ -680,9 +601,9 @@ class XPySom:
                 self._distance_from_weights(data_gpu[start:end], weights_gpu), axis=1
             )
             unraveled_indexes = self.xp.unravel_index(
-                winners_coords, self._weights.shape[:2]
+                winners_coords, self.weights.shape[:2]
             )
-            weights_gpu = self.xp.array(self._weights)
+            weights_gpu = self.xp.array(self.weights)
             quantized.append(weights_gpu[unraveled_indexes])
 
         return self.xp.vstack(quantized)
@@ -692,7 +613,7 @@ class XPySom:
         data[i] and the j-th weight.
         """
         data_gpu = self.xp.array(data)
-        weights_gpu = self.xp.array(self._weights)
+        weights_gpu = self.xp.array(self.weights)
         d = self._distance_from_weights(data_gpu, weights_gpu)
 
         if GPU_SUPPORTED and isinstance(d, cp.ndarray):
@@ -738,7 +659,7 @@ class XPySom:
                 return new_block
 
             q_error = blocks.map_blocks(
-                _quantization_error_block, self._weights, dtype=self.xp.float32
+                _quantization_error_block, self.weights, dtype=self.xp.float32
             )
 
             qe_lin = da.linalg.norm(q_error, axis=1)
@@ -746,7 +667,7 @@ class XPySom:
         else:
             # load to GPU
             data_gpu = self.xp.array(data, dtype=self.xp.float32)
-            weights_gpu = self.xp.array(self._weights)
+            weights_gpu = self.xp.array(self.weights)
 
             # recycle buffer
             data_gpu -= self._quantization(data_gpu, weights_gpu)
@@ -767,7 +688,7 @@ class XPySom:
         If the topographic error is 0, no error occurred.
         If 1, the topology was not preserved for any of the samples."""
         self._check_input_len(data)
-        total_neurons = np.prod(self._weights.shape)
+        total_neurons = np.prod(self.weights.shape)
         if total_neurons == 1:
             warn("The topographic error is not defined for a 1-by-1 map.")
             return np.nan
@@ -775,13 +696,13 @@ class XPySom:
         # load to GPU
         data_gpu = self.xp.array(data, dtype=self.xp.float32)
 
-        weights_gpu = self.xp.array(self._weights)
+        weights_gpu = self.xp.array(self.weights)
 
         distances = self._distance_from_weights(data_gpu, weights_gpu)
 
         # b2mu: best 2 matching units
         b2mu_inds = self.xp.argsort(distances, axis=1)[:, :2]
-        b2my_xy = self.xp.unravel_index(b2mu_inds, self._weights.shape[:2])
+        b2my_xy = self.xp.unravel_index(b2mu_inds, self.weights.shape[:2])
         if self.topology == "rectangular":
             b2mu_x, b2mu_y = b2my_xy[0], b2my_xy[1]
             diff_b2mu_x = self.xp.abs(self.xp.diff(b2mu_x))
@@ -800,10 +721,10 @@ class XPySom:
         TODO: unoptimized
         """
         self._check_input_len(data)
-        it = np.nditer(self._weights[:, :, 0], flags=["multi_index"])
+        it = np.nditer(self.weights[:, :, 0], flags=["multi_index"])
         while not it.finished:
             rand_i = self._random_generator.randint(len(data))
-            self._weights[it.multi_index] = data[rand_i]
+            self.weights[it.multi_index] = data[rand_i]
             it.iternext()
 
     def pca_weights_init(self, data):
@@ -831,7 +752,7 @@ class XPySom:
         pc_order = np.argsort(-pc_length)
         for i, c1 in enumerate(np.linspace(-1, 1, len(self._neigx))):
             for j, c2 in enumerate(np.linspace(-1, 1, len(self._neigy))):
-                self._weights[i, j] = c1 * pc[pc_order[0]] + c2 * pc[pc_order[1]]
+                self.weights[i, j] = c1 * pc[pc_order[0]] + c2 * pc[pc_order[1]]
 
     def distance_map(self):
         """Returns the distance map of the weights.
@@ -841,7 +762,7 @@ class XPySom:
         TODO: unoptimized
         """
         um = np.zeros(
-            (self._weights.shape[0], self._weights.shape[1], 8)
+            (self.weights.shape[0], self.weights.shape[1], 8)
         )  # 2 spots more for hexagonal topology
 
         ii = [[0, -1, -1, -1, 0, 1, 1, 1]] * 2
@@ -851,18 +772,18 @@ class XPySom:
             ii = [[1, 1, 1, 0, -1, 0], [0, 1, 0, -1, -1, -1]]
             jj = [[1, 0, -1, -1, 0, 1], [1, 0, -1, -1, 0, 1]]
 
-        for x in range(self._weights.shape[0]):
-            for y in range(self._weights.shape[1]):
-                w_2 = self._weights[x, y]
+        for x in range(self.weights.shape[0]):
+            for y in range(self.weights.shape[1]):
+                w_2 = self.weights[x, y]
                 e = y % 2 == 0  # only used on hexagonal topology
                 for k, (i, j) in enumerate(zip(ii[e], jj[e])):
                     if (
                         x + i >= 0
-                        and x + i < self._weights.shape[0]
+                        and x + i < self.weights.shape[0]
                         and y + j >= 0
-                        and y + j < self._weights.shape[1]
+                        and y + j < self.weights.shape[1]
                     ):
-                        w_1 = self._weights[x + i, y + j]
+                        w_1 = self.weights[x + i, y + j]
                         um[x, y, k] = np.linalg.norm(w_2 - w_1)
 
         um = um.sum(axis=2)
@@ -874,8 +795,8 @@ class XPySom:
         that the neuron i,j have been winner.
         """
         self._check_input_len(data)
-        a = np.zeros((self._weights.shape[0], self._weights.shape[1]))
-        winners = self.winner(data)
+        a = np.zeros((self.weights.shape[0], self.weights.shape[1]))
+        winners = self.predict(data)
         for win in winners:
             a[win] += 1
         return a
@@ -886,7 +807,7 @@ class XPySom:
         """
         self._check_input_len(data)
         winmap = defaultdict(list)
-        winners = self.winner(data)
+        winners = self.predict(data)
         for x, win in zip(data, winners):
             winmap[win].append(x)
         return winmap
@@ -909,7 +830,7 @@ class XPySom:
         if not len(data) == len(labels):
             raise ValueError("data and labels must have the same length.")
         winmap = defaultdict(list)
-        winners = self.winner(data)
+        winners = self.predict(data)
         for win, l in zip(winners, labels):
             winmap[win].append(l)
         for position in winmap:
@@ -923,7 +844,8 @@ class XPySom:
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
         del state["xp"]
-        del state["neighborhood"]
+        del state["neighborhoods"]
+        del state["neighborhood_caller"]
         del state["_activation_distance"]
         state["xp_name"] = self.xp.__name__
         return state
@@ -939,7 +861,17 @@ class XPySom:
         except:
             self.xp = default_xp
 
-        self.neighborhood = self.get_neig_functions()[self.neighborhood_func_name]
+        self.neighborhoods = Neighborhoods(
+            self.x,
+            self.y,
+            self.polygons,
+            self.inner_dist_type,
+            self.PBC,
+        )
+        self.neighborhood_caller = partial(
+            self.neighborhoods.neighborhood_caller,
+            neigh_func=self.neighborhood_function,
+        )
         self._activation_distance = DistanceFunction(
             self._activation_distance_name, self._activation_distance_kwargs, self.xp
         )
