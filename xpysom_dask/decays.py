@@ -17,7 +17,7 @@ def asymptotic_decay(val0, valN, curr_iter, max_iter):
     max_iter : int
         maximum number of iterations for the training.
     """
-    return val0 / (1 + 2 * curr_iter / max_iter )
+    return val0 / (1 + 2 * curr_iter / max_iter)
 
 
 def exponential_decay(val0, valN, curr_iter, max_iter):
@@ -51,7 +51,7 @@ def linear_decay(val0, valN, curr_iter, max_iter):
         initial value.
 
     valN : float
-        final value. 
+        final value.
 
     curr_iter : int
         current iteration.
@@ -60,6 +60,6 @@ def linear_decay(val0, valN, curr_iter, max_iter):
         maximum number of iterations for the training.
     """
     if max_iter != 1:
-        return val0 + (valN - val0) * curr_iter / (max_iter-1)
+        return val0 + (valN - val0) * curr_iter / (max_iter - 1)
     else:
         return val0
