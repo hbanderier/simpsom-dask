@@ -95,7 +95,7 @@ class XPySom:
         decay_function="exponential",
         neighborhood_function="gaussian",
         std_coeff=0.5,
-        topology="rectangular",
+        topology="hexagonal",
         inner_dist_type: str | Sequence[str] = "grid",
         PBC: bool = False,
         activation_distance="euclidean",
