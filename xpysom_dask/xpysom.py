@@ -1,6 +1,7 @@
 from math import sqrt, ceil
 from collections import defaultdict
 from functools import partial, wraps
+from pathlib import Path
 from warnings import warn
 from collections import defaultdict, Counter
 from typing import Callable, Iterable, Sequence, Literal
@@ -97,7 +98,7 @@ class XPySom:
         std_coeff=0.5,
         topology="hexagonal",
         inner_dist_type: str | Sequence[str] = "grid",
-        PBC: bool = False,
+        PBC: bool = True,
         activation_distance="euclidean",
         activation_distance_kwargs={},
         init: Literal["random", "pca"] = "random",
@@ -105,8 +106,8 @@ class XPySom:
         n_parallel=0,
         compact_support=False,
         xp=default_xp,
-        use_dask=False,
-        dask_chunks="auto",
+        use_dask=True,
+        dask_chunks=(100, -1),
     ):
         """Initializes a Self Organizing Maps.
 
@@ -286,6 +287,12 @@ class XPySom:
         self._n_parallel = n_parallel
 
         self._sq_weights_gpu = None
+        
+    def load_weights(self, path: Path):
+        weights = np.load(path)
+        assert weights.shape[0] == self.n_nodes
+        self.weights = weights
+        self._input_len = self.weights.shape[1]
 
     def _coerce(self, array):
         """Turns numpy to cupy
@@ -414,7 +421,7 @@ class XPySom:
             denominator_gpu != 0, numerator_gpu / denominator_gpu, weights_gpu
         )
 
-    def train(self, data, num_epochs, iter_beg=0, iter_end=None, verbose=False):
+    def train(self, data, num_epochs, iter_beg=0, iter_end=None, verbose=False, out_path: Path = None):
         """Trains the SOM.
 
         Parameters
@@ -536,7 +543,9 @@ class XPySom:
             weights_gpu = weights_gpu.astype(np.float32)
 
         # Copy back arrays to host
-        self.weights = _get(weights_gpu)
+        self.weights = _get(_compute(weights_gpu))
+        if out_path is not None:
+            np.save(self.weights, out_path)
 
         # free temporary memory
         self._sq_weights_gpu = None
