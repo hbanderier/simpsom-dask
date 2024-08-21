@@ -73,7 +73,7 @@ class TestCupySom(unittest.TestCase):
             self.som.labels_map([[5.0]], ["a", "b"])
 
     def test_activation_reponse(self):
-        response = self.som.activation_response([[5.0], [2.0]])
+        response = self.som.compute_populations([[5.0], [2.0]])
         assert response[2, 3] == 1
         assert response[1, 1] == 1
 

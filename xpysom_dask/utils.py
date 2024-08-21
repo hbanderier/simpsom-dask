@@ -21,3 +21,19 @@ def find_cpu_cores():
     except:
         print("Could not infer #CPU_cores")
         return 0
+    
+    
+def _get(array):
+    try:
+        return array.get()
+    except AttributeError:
+        return array
+    
+    
+def _compute(array):
+    try:
+        return array.compute()
+    except AttributeError:
+        return array
+
+    

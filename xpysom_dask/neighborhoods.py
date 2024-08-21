@@ -47,7 +47,7 @@ class Neighborhoods:
             self.dist_type = dist_type
             self.sub_dist_type = 'l2'
         self.coordinates = np.asarray(
-            [[x, y] for x in range(self.width) for y in range(self.height)]
+            [[x, y] for y in range(self.height - 1, -1, -1) for x in range(self.width)]
         ).astype(np.float32)
         if self.polygons.lower() == "hexagons":
             oddrows = self.coordinates[:, 1] % 2 == 1
@@ -57,8 +57,7 @@ class Neighborhoods:
             return self.cartesian_distances(
                 self.coordinates, self.coordinates
             )
-        input = np.arange(self.n_nodes)
-        return self.grid_distance(input, input)
+        return self.grid_distance(self.nodes, self.nodes)
 
     def cartesian_distances(
         self,
