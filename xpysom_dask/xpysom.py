@@ -13,6 +13,7 @@ import pickle
 import os
 
 import numpy as np
+from tqdm import trange, tqdm
 
 try:
     # Cupy needs to be imported first.
@@ -24,7 +25,6 @@ try:
     default_xp = cp
     GPU_SUPPORTED = True
 except ModuleNotFoundError:
-    print("WARNING: CuPy could not be imported")
     default_xp = np
     GPU_SUPPORTED = False
 
@@ -310,17 +310,20 @@ class XPySom:
 
     def _init_weights(self, data) -> None:
         if self.init == "pca":
+            print("PCA weights init")
             init_vec = PCA(2).fit_transform(data)
         else:
+            print("Random weights init")
             init_vec = [
-                data.min(axis=0),
-                data.max(axis=0),
+                data[np.random.randint(len(data), size=1000)].min(axis=0),
+                data[np.random.randint(len(data), size=1000)].max(axis=0),
             ]
         self.weights = (
             init_vec[0][None, :]
             + (init_vec[1] - init_vec[0])[None, :]
             * np.random.rand(self.n_nodes, *init_vec[0].shape)
         ).astype(np.float32)
+        self.weights = _compute(self.weights, progress=True)
         self._input_len = self.weights.shape[1]
 
     def get_weights(self):
@@ -481,7 +484,7 @@ class XPySom:
         if verbose:
             print_progress(-1, num_epochs * len(data))
 
-        for iteration in range(iter_beg, iter_end):
+        for iteration in trange(iter_beg, iter_end):
             try:  # reuse already allocated memory
                 numerator_gpu.fill(0)
                 denominator_gpu.fill(0)
@@ -545,7 +548,9 @@ class XPySom:
         # Copy back arrays to host
         self.weights = _get(_compute(weights_gpu))
         if out_path is not None:
-            np.save(self.weights, out_path)
+            np.save(out_path, self.weights)
+         
+        self.train_data_bmus = self.predict(data)
 
         # free temporary memory
         self._sq_weights_gpu = None
@@ -588,12 +593,17 @@ class XPySom:
         return wrap
     
     @memoize
-    def predict(self, x):
+    def predict(self, x = None):
         """Computes the indices of the winning neurons for the samples x."""
+        if x is None:
+            try:
+                return self.train_data_bmus
+            except AttributeError:
+                pass
         x_gpu = self._coerce(x)
         weights_gpu = self.xp.asarray(self.weights)
         if not GPU_SUPPORTED:
-            return _compute(self._winner(x_gpu, weights_gpu))
+            return _compute(self._winner(x_gpu, weights_gpu), progress=True)
 
         orig_shape = x_gpu.shape
         if len(orig_shape) == 1:
@@ -614,9 +624,9 @@ class XPySom:
 
         winners_gpu = self.xp.hstack(winners_chunks)
 
-        return _get(_compute(winners_gpu))
+        return _get(_compute(winners_gpu), progress=True)
 
-    def quantization(self, x):
+    def quantization(self, x = None):
         """Assigns a code book (weights vector of the winning neuron)
         to each sample in data."""
 
@@ -737,12 +747,11 @@ class XPySom:
         weights_dist[(pos_dist > 1.01) | (pos_dist == 0.0)] = np.nan
         return _get(_compute(self.xp.nanmean(weights_dist)))
 
-    def compute_populations(self, data):
+    def compute_populations(self, data = None):
         """
         Returns a matrix where the element i,j is the number of times
         that the neuron i,j have been winner.
         """
-        self._check_input_len(data)
         winners = self.predict(data)
         return np.asarray([np.sum(winners == i) for i in range(self.n_nodes)])
 
@@ -782,14 +791,14 @@ class XPySom:
             winmap[position] = Counter(winmap[position])
         return winmap
 
-    def compute_transmat(self, data, step: int = 1, yearbreaks: int = 92):
+    def compute_transmat(self, data = None, step: int = 1, yearbreaks: int = 92):
         winners = _compute(self.predict(data))
         return compute_transmat(
             winners, self.n_nodes, step=step, yearbreaks=yearbreaks, xp=self.xp
         )
 
     def compute_residence_time(
-        self, data, smooth_sigma: float = 0.0, yearbreaks: int = 92, q: float = 0.95
+        self, data = None, smooth_sigma: float = 0.0, yearbreaks: int = 92, q: float = 0.95
     ):
         winners = _compute(self.predict(data))
         return compute_residence_time(
@@ -802,7 +811,7 @@ class XPySom:
             xp=self.xp,
         )
     
-    def compute_autocorrelation(self, data, lag_max: int = 50):
+    def compute_autocorrelation(self, data = None, lag_max: int = 50):
         winners = _compute(self.predict(data))
         return compute_autocorrelation(
             winners, 

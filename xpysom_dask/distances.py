@@ -6,7 +6,6 @@ try:
     default_xp = cp
     _cupy_available = True
 except:
-    print("WARNING: CuPy could not be imported")
     default_xp = np
     _cupy_available = False
 
