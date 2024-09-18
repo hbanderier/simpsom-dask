@@ -119,11 +119,13 @@ class Neighborhoods:
         ndim = 0
         i, j = np.asarray(i), np.asarray(j)
         nx, ny = self.width, self.height
-        for input in [i, j]:
-            ndim += input.ndim
+        for input_ in [i, j]:
+            ndim += input_.ndim
         i, j = np.atleast_1d(i), np.atleast_1d(j)
-        xi, yi = divmod(i, ny)
-        xj, yj = divmod(j, ny)
+        yi, xi = divmod(i, nx)
+        yi = ny - yi - 1
+        yj, xj = divmod(j, nx)
+        yj = ny - yj - 1
         if self.polygons.lower() == "hexagons":
             self.dx, self.dy = self.hexagonal_grid_distance(xi, yi, xj, yj)
             mask = np.sign(self.dx) == np.sign(self.dy)

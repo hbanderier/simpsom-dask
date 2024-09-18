@@ -550,7 +550,7 @@ class XPySom:
         if out_path is not None:
             np.save(out_path, self.weights)
          
-        self.train_data_bmus = self.predict(data)
+        self.latest_bmus = self.predict(data)
 
         # free temporary memory
         self._sq_weights_gpu = None
@@ -592,18 +592,22 @@ class XPySom:
             return cache[key]
         return wrap
     
-    @memoize
     def predict(self, x = None):
         """Computes the indices of the winning neurons for the samples x."""
         if x is None:
             try:
-                return self.train_data_bmus
+                return self.latest_bmus
             except AttributeError:
-                pass
+                print("Provide x at least once")
+                raise ValueError
+        return self._predict(x)
+    
+    @memoize
+    def _predict(self, x):
         x_gpu = self._coerce(x)
         weights_gpu = self.xp.asarray(self.weights)
         if not GPU_SUPPORTED:
-            return _compute(self._winner(x_gpu, weights_gpu), progress=True)
+            return _compute(self._winner(x_gpu, weights_gpu), progress=True) 
 
         orig_shape = x_gpu.shape
         if len(orig_shape) == 1:
