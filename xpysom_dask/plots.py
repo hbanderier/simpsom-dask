@@ -264,17 +264,17 @@ def create_outer_grid(nx: int, ny: int, polygons: str = "hexagons") -> Tuple[NDA
     othernei = Neighborhoods(nx, ny, polygons, PBC=True)
     coords = nei.coordinates
     outer_grid = np.arange(nei.width * nei.height).reshape(
-        nei.height, nei.width, order="F"
-    )
+        nei.height, nei.width, order="C"
+    )[::-1, :]
     outermask = np.zeros_like(outer_grid, dtype=bool)
     outermask[:4, :] = True
     outermask[-4:, :] = True
     outermask[:, :4] = True
     outermask[:, -4:] = True
-    outermask = outermask.flatten(order="F")
+    outermask = outermask[::-1, :].flatten(order="C")
     inner_grid = np.arange(othernei.width * othernei.height).reshape(
-        othernei.height, othernei.width, order="F"
-    )
+        othernei.height, othernei.width, order="C"
+    )[::-1, :]
     slicex = slice(
         inner_grid.shape[0] - 4, inner_grid.shape[0] - 4 + outer_grid.shape[0]
     )
@@ -285,8 +285,8 @@ def create_outer_grid(nx: int, ny: int, polygons: str = "hexagons") -> Tuple[NDA
     outer_grid[:, -4:] = np.tile(inner_grid[:, :4].T, 5)[:, slicex].T
     outer_grid[:4, :] = np.tile(inner_grid[-4:, :], 5)[:, slicey]
     outer_grid[-4:, :] = np.tile(inner_grid[:4, :], 5)[:, slicey]
-    outer_grid = outer_grid.flatten(order="F") # TODO: broken, probably C, probably reorder
-    outer_grid[~outermask] = inner_grid.flatten(order="F")
+    outer_grid = outer_grid[::-1, :].flatten(order="C")
+    outer_grid[~outermask] = inner_grid[::-1, :].flatten(order="C")
     return outer_grid, inner_grid, coords, outermask
 
 
@@ -385,21 +385,21 @@ def segments_to_arcs(segments: NDArray, n_points: int = 50) -> Tuple[NDArray, li
 
 
 def plt_traj_hotspell(
-    hotspell, bmus_da, da_T_region = None
+    width: int, height: int, hotspell, bmus_da, da_T_region = None
 ):
-    width = bmus_da.attrs["width"]
-    height = bmus_da.attrs["height"]
+    n_nodes = width * height
     traj_da = bmus_da.loc[hotspell]
     traj = traj_da.values
     outer_grid, inner_grid, coords, outermask = create_outer_grid(width, height)
     edgecolors = np.full(len(coords), "black", dtype=object)
     edgecolors[outermask] = "gray"
     alphas = np.ones(len(coords))
-    alphas[outermask] = 0.2
+    linewidths = np.ones(len(coords)) * 2
+    linewidths[outermask] = 0.5
 
     populations = np.zeros_like(outer_grid)
     populations[outermask] = 0
-    thesepops = np.sum(traj[:, None] == np.arange(bmus_da.attrs["n_nodes"])[None, :], axis=0)
+    thesepops = np.sum(traj[:, None] == np.arange(n_nodes)[None, :], axis=0)
     populations[~outermask] = thesepops
     
     traj_split = np.split(traj, np.where((np.diff(traj) != 0))[0] + 1)
@@ -450,7 +450,7 @@ def plt_traj_hotspell(
         edgecolors="black",
         cmap="Greys",
         alphas=alphas,
-        linewidths=0.5,
+        linewidths=linewidths,
         fig=fig,
         ax=ax,
     )
@@ -466,10 +466,10 @@ def plt_traj_hotspell(
         cax=ax_cbar,
         label=f"Time during the hotspell in {traj_da[0].time.dt.year.item()}",
     )
-    uniques = uniques[sort_like]
+    new_uniques = uniques[sort_like]
     sizes = sizes[sort_like]
     colors = colors[:-1][sort_like]
-    ax.scatter(*coords[~outermask][uniques].T, s=100 * sizes, c=colors, zorder=10)
+    ax.scatter(*coords[~outermask][new_uniques].T, s=100 * sizes, c=colors, zorder=10)
 
     every = 4 * (len(traj) // 40 + 1)
     list_of_days = np.asarray(np.arange(0, len(traj), every))
@@ -502,7 +502,7 @@ def plt_traj_hotspell(
         0,
         temperature_profile >= 0,
         color="red",
-        alpha=0.6,
+        alpha=1.0,
         interpolate=True,
     )
     ax_temp.set_xticks([-3, 0, 3])
@@ -522,13 +522,25 @@ def plt_traj_hotspell(
         left = 0.05
     else:
         left = 0.5
-    cax = fig.add_axes([left, 0.009, 0.2, 0.05])
-    im = ScalarMappable(**kwargs)
-    fig.colorbar(im, cax=cax, orientation="horizontal")
-    cax.set_xticks(
-        [0, np.amax(thesepops)],
-        labels=["$0$", f"${int(np.amax(thesepops))}/{len(traj)}$"],
-    )
+    # cax = fig.add_axes([left, 0.009, 0.2, 0.05])
+    # im = ScalarMappable(**kwargs)
+    # fig.colorbar(im, cax=cax, orientation="horizontal")
+    # cax.set_xticks(
+    #     [0, np.amax(thesepops)],
+    #     labels=["$0$", f"${int(np.amax(thesepops))}/{len(traj)}$"],
+    # )
+    for i, c in enumerate(coords):
+        x, y = c
+        j = outer_grid.flatten()[i]
+        textcolor = "black"
+        if outermask[i]:
+            fontsize = 11
+        else:
+            if j in uniques and (uniques.tolist().index(j) / len(uniques) > 0.5):
+                textcolor = "white"
+            fontsize = 14
+        if x > xlims[0] and x < xlims[-1] and y > ylims[0] and y < ylims[-1]: 
+            ax.text(x, y, f'${1 + j}$', va='center', ha='center', color=textcolor, fontsize=fontsize, zorder=200)
 
     return fig, ax, cbar
 
