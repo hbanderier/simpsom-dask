@@ -464,6 +464,11 @@ class XPySom:
             data_gpu = data.astype(self.xp.float32)
             if self.use_dask:
                 data_gpu_block = da.from_array(data_gpu, chunks=self.dask_chunks)
+        elif default_da and isinstance(data, np.ndarray):
+            if self.use_dask:
+                data_gpu_block = da.from_array(data, chunks=self.dask_chunks)
+            else:
+                data_gpu = data
         elif default_da and isinstance(data, ddf.core.DataFrame):
             if self.use_dask:
                 data_gpu_block = data.to_dask_array()
@@ -589,6 +594,7 @@ class XPySom:
             if key not in cache:        
                 cache[key] = cc = func(self, x)          
                 return cc
+            print("Memoized")
             return cache[key]
         return wrap
     
@@ -600,7 +606,8 @@ class XPySom:
             except AttributeError:
                 print("Provide x at least once")
                 raise ValueError
-        return self._predict(x)
+        self.latest_bmus = self._predict(x)
+        return self.latest_bmus
     
     @memoize
     def _predict(self, x):
