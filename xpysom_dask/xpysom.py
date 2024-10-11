@@ -590,6 +590,7 @@ class XPySom:
             # If these arguments haven't been seen before, call func() and store the result.
             shape = x.shape
             sum_ = _compute(x[:, shape[1] // 2].sum())
+            sum_ += self.weights[:, shape[1] // 2].sum()
             key = (*shape, sum_)
             if key not in cache:        
                 cache[key] = cc = func(self, x)          
