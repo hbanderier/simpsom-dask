@@ -12,6 +12,7 @@ from datetime import timedelta
 import pickle
 import os
 
+from networkx import dag_longest_path
 import numpy as np
 from tqdm import trange, tqdm
 
@@ -39,15 +40,13 @@ except ModuleNotFoundError:
     print("WARNING: Dask Arrays could not be imported")
     default_da = False
 
-try:
-    from dask_ml.decomposition import PCA
-except ModuleNotFoundError:
-    from sklearn.decomposition import PCA
+from dask_ml.decomposition import PCA as da_PCA
+from sklearn.decomposition import PCA
 
 
 from .distances import DistanceFunction, euclidean_distance
 from .neighborhoods import Neighborhoods
-from .utils import find_cpu_cores, find_max_cuda_threads, _get, _compute
+from .utils import find_cpu_cores, find_max_cuda_threads, _get, _compute, triangulize, normalize
 from .decays import linear_decay, asymptotic_decay, exponential_decay
 from .diagnostics import *
 from .plots import plot_map
@@ -91,8 +90,6 @@ class XPySom:
         y,
         sigma=0,
         sigmaN=1,
-        learning_rate=0.5,
-        learning_rateN=0.01,
         decay_function="exponential",
         neighborhood_function="gaussian",
         std_coeff=0.5,
@@ -136,14 +133,8 @@ class XPySom:
         sigmaN : float, optional (default=0.01)
             Spread of the neighborhood function at last iteration.
 
-        learning_rate : float, optional (default=0.5)
-            initial learning rate.
-
-        learning_rateN : float, optional (default=0.01)
-            final learning rate
-
         decay_function : string, optional (default='exponential')
-            Function that reduces learning_rate and sigma at each iteration.
+            Function that reduces sigma at each iteration.
             Possible values: 'exponential', 'linear', 'aymptotic'
 
         neighborhood_function : string, optional (default='gaussian')
@@ -200,9 +191,6 @@ class XPySom:
         # Use dask for clustering SOM
         self.use_dask = use_dask & default_da
         self.dask_chunks = dask_chunks
-
-        self._learning_rate = learning_rate
-        self._learning_rateN = learning_rateN
 
         if sigma == 0:
             self._sigma = min(x, y) / 2
@@ -309,20 +297,41 @@ class XPySom:
         return self.xp.array(array)
 
     def _init_weights(self, data) -> None:
+        rng = np.random.default_rng()
         if self.init == "pca":
+            if isinstance(data, da.core.Array):
+                pca = da_PCA
+            else:
+                pca = PCA
             print("PCA weights init")
-            init_vec = PCA(2).fit_transform(data)
+            pca_res = pca(2).fit(data)
+            init_vec = pca_res.components_
+            trans = pca_res.transform(data[rng.integers(data.shape[0], size=10000)])
+            mins = trans.max()
+            maxs = trans.min()
+            span_x = np.linspace(-mins, maxs, self.x) / 3
+            span_y = np.linspace(-mins, maxs, self.y) / 3
+            if self.PBC:
+                span_x = triangulize(span_x)
+                span_y = triangulize(span_y)
+            span_x = span_x + rng.random(span_x.shape) * 0.1 * (maxs - mins)
+            span_y = span_y + rng.random(span_y.shape) * 0.1 * (maxs - mins)
+            wx = span_x[:, None] * init_vec[0][None, :]
+            wy = span_y[:, None] * init_vec[1][None, :]
+            self.weights = wx[:, None, :] + wy[None, :, :]
+            self.weights = self.weights.reshape(-1, wx.shape[1])
+            
         else:
             print("Random weights init")
             init_vec = [
-                data[np.random.randint(len(data), size=1000)].min(axis=0),
-                data[np.random.randint(len(data), size=1000)].max(axis=0),
+                data[rng.integers(len(data), size=1000)].min(axis=0),
+                data[rng.integers(len(data), size=1000)].max(axis=0),
             ]
-        self.weights = (
-            init_vec[0][None, :]
-            + (init_vec[1] - init_vec[0])[None, :]
-            * np.random.rand(self.n_nodes, *init_vec[0].shape)
-        ).astype(np.float32)
+            self.weights = (
+                init_vec[0][None, :]
+                + (init_vec[1] - init_vec[0])[None, :]
+                * rng.random((self.n_nodes, *init_vec[0].shape))
+            ).astype(np.float32)
         self.weights = _compute(self.weights, progress=True)
         self._input_len = self.weights.shape[1]
 
@@ -376,9 +385,6 @@ class XPySom:
             raise ValueError(msg)
 
     def _update_rates(self, iteration, num_epochs):
-        self.learning_rate = self._decay_function(
-            self._learning_rate, self._learning_rateN, iteration, num_epochs
-        )
         self.sigma = self._decay_function(
             self._sigma, self._sigmaN, iteration, num_epochs
         )
@@ -488,7 +494,7 @@ class XPySom:
 
         if verbose:
             print_progress(-1, num_epochs * len(data))
-
+        
         for iteration in trange(iter_beg, iter_end):
             try:  # reuse already allocated memory
                 numerator_gpu.fill(0)
@@ -541,14 +547,9 @@ class XPySom:
                             iteration * len(data) + end - 1, num_epochs * len(data)
                         )
 
-            new_weights = self._merge_updates(
+            weights_gpu = self._merge_updates(
                 weights_gpu, numerator_gpu, denominator_gpu
             )
-
-            weights_gpu = (
-                1 - self.learning_rate
-            ) * weights_gpu + self.learning_rate * new_weights
-            weights_gpu = weights_gpu.astype(np.float32)
 
         # Copy back arrays to host
         self.weights = _get(_compute(weights_gpu))
@@ -707,7 +708,7 @@ class XPySom:
 
             qe = self.xp.linalg.norm(data_gpu, axis=1).mean().item()
 
-        return qe
+        return _compute(qe)
 
     def topographic_error(self, data):
         """Returns the topographic error computed by finding
@@ -726,7 +727,7 @@ class XPySom:
             return np.nan
 
         # load to GPU
-        data_gpu = self._coerce(data, dtype=self.xp.float32)
+        data_gpu = self._coerce(data)
 
         weights_gpu = self.xp.array(self.weights)
 

@@ -5,6 +5,7 @@ try:
 except ModuleNotFoundError:
     pass
 import os
+import numpy as np
 N_WORKERS = int(os.environ.get("SLURM_CPUS_PER_TASK", "8"))
 MEMORY_LIMIT = int(os.environ.get("SLURM_MEM_PER_NODE", "150000")) // N_WORKERS
 COMPUTE_KWARGS = {
@@ -53,5 +54,25 @@ def _compute(obj, progress: bool = False, **kwargs):
             return obj.compute(**kwargs)
     except AttributeError:
         return obj
+    
+    
+def triangulize(span: np.ndarray):
+    filter_ = (span > 0).astype(int)
+    out = span * 2 + 1
+    out = out - 2 * filter_
+    out = out * np.asarray([1, -1])[filter_]
+    return out
+
+
+def normalize(X):
+    meanX = X.mean(axis=0)
+    stdX = X.std(axis=0)
+    X = (X - meanX[None, :]) / stdX[None, :]
+    return X, meanX, stdX
+
+
+def revert_normalize(X, meanX, stdX):
+    X = X * stdX[None, :] + meanX[None, :]
+    return X
 
     
