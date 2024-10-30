@@ -46,7 +46,7 @@ from sklearn.decomposition import PCA
 
 from .distances import DistanceFunction, euclidean_distance
 from .neighborhoods import Neighborhoods
-from .utils import find_cpu_cores, find_max_cuda_threads, _get, _compute, triangulize, normalize
+from .utils import find_cpu_cores, find_max_cuda_threads, _get, compute, triangulize, normalize
 from .decays import linear_decay, asymptotic_decay, exponential_decay
 from .diagnostics import *
 from .plots import plot_map
@@ -332,7 +332,7 @@ class XPySom:
                 + (init_vec[1] - init_vec[0])[None, :]
                 * rng.random((self.n_nodes, *init_vec[0].shape))
             ).astype(np.float32)
-        self.weights = _compute(self.weights, progress=True)
+        self.weights = compute(self.weights, progress_flag=True)
         self._input_len = self.weights.shape[1]
 
     def get_weights(self):
@@ -479,16 +479,16 @@ class XPySom:
             if self.use_dask:
                 data_gpu_block = data.to_dask_array()
             else:
-                data_gpu = data.to_dask_array().compute()
+                data_gpu = compute(data.to_dask_array())
         elif GPU_SUPPORTED and isinstance(data, dcudf.core.DataFrame):
             if self.use_dask:
                 data_gpu = data.to_dask_array()
-            data_gpu = data.compute()
+            data_gpu = compute(data)
         elif default_da and isinstance(data, da.core.Array):
             if self.use_dask:
                 data_gpu_block = data
             else:
-                data_gpu = data.compute().astype(self.xp.float32)
+                data_gpu = compute(data).astype(self.xp.float32)
         else:
             data_gpu = self.xp.asarray(data, dtype=self.xp.float32)
 
@@ -552,7 +552,7 @@ class XPySom:
             )
 
         # Copy back arrays to host
-        self.weights = _get(_compute(weights_gpu))
+        self.weights = _get(compute(weights_gpu))
         if out_path is not None:
             np.save(out_path, self.weights)
          
@@ -590,7 +590,7 @@ class XPySom:
         def wrap(self, x):
             # If these arguments haven't been seen before, call func() and store the result.
             shape = x.shape
-            sum_ = _compute(x[:, shape[1] // 2].sum())
+            sum_ = compute(x[:, shape[1] // 2].sum())
             sum_ += self.weights[:, shape[1] // 2].sum()
             key = (*shape, sum_)
             if key not in cache:        
@@ -616,12 +616,12 @@ class XPySom:
         x_gpu = self._coerce(x)
         weights_gpu = self.xp.asarray(self.weights)
         if not GPU_SUPPORTED:
-            return _compute(self._winner(x_gpu, weights_gpu), progress=True) 
+            return compute(self._winner(x_gpu, weights_gpu), progress_flag=True) 
 
         orig_shape = x_gpu.shape
         if len(orig_shape) == 1:
             if isinstance(x_gpu, da.core.Array):
-                x_gpu = da.expand_dims(x_gpu, axis=0).compute()
+                x_gpu = compute(da.expand_dims(x_gpu, axis=0))
             else:
                 x_gpu = self.xp.expand_dims(x_gpu, axis=0)
 
@@ -637,13 +637,13 @@ class XPySom:
 
         winners_gpu = self.xp.hstack(winners_chunks)
 
-        return _get(_compute(winners_gpu), progress=True)
+        return _get(compute(winners_gpu), progress_flag=True)
 
     def quantization(self, x = None):
         """Assigns a code book (weights vector of the winning neuron)
         to each sample in data."""
 
-        winners = _compute(self.predict(x))
+        winners = compute(self.predict(x))
         weights = _get(self.weights)
         return weights[winners]
 
@@ -708,7 +708,7 @@ class XPySom:
 
             qe = self.xp.linalg.norm(data_gpu, axis=1).mean().item()
 
-        return _compute(qe)
+        return compute(qe)
 
     def topographic_error(self, data):
         """Returns the topographic error computed by finding
@@ -735,7 +735,7 @@ class XPySom:
 
         # b2mu: best 2 matching units
         if isinstance(distances, da.core.Array):
-            b2mu_inds = da.argtopk(distances, k=-2, axis=1).compute()
+            b2mu_inds = compute(da.argtopk(distances, k=-2, axis=1))
         else:
             b2mu_inds = self.xp.argsort(distances, axis=1)[:, :2]
 
@@ -758,7 +758,7 @@ class XPySom:
         weights_dist = euclidean_distance(weights_gpu, weights_gpu, xp=self.xp)
         pos_dist = self.neighborhoods.distances
         weights_dist[(pos_dist > 1.01) | (pos_dist == 0.0)] = np.nan
-        return _get(_compute(self.xp.nanmean(weights_dist)))
+        return _get(compute(self.xp.nanmean(weights_dist)))
 
     def compute_populations(self, data = None):
         """
@@ -805,7 +805,7 @@ class XPySom:
         return winmap
 
     def compute_transmat(self, data = None, step: int = 1, yearbreaks: int = 92):
-        winners = _compute(self.predict(data))
+        winners = compute(self.predict(data))
         return compute_transmat(
             winners, self.n_nodes, step=step, yearbreaks=yearbreaks, xp=self.xp
         )
@@ -813,7 +813,7 @@ class XPySom:
     def compute_residence_time(
         self, data = None, smooth_sigma: float = 0.0, yearbreaks: int = 92, q: float = 0.95
     ):
-        winners = _compute(self.predict(data))
+        winners = compute(self.predict(data))
         return compute_residence_time(
             winners,
             self.n_nodes,
@@ -825,7 +825,7 @@ class XPySom:
         )
     
     def compute_autocorrelation(self, data = None, lag_max: int = 50):
-        winners = _compute(self.predict(data))
+        winners = compute(self.predict(data))
         return compute_autocorrelation(
             winners, 
             self.n_nodes,

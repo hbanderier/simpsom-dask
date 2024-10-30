@@ -44,14 +44,26 @@ def _get(array):
         return array
     
     
-def _compute(obj, progress: bool = False, **kwargs):
+def compute(obj, progress_flag: bool = False, **kwargs):
     kwargs = COMPUTE_KWARGS | kwargs
     try:
-        if progress:
-            with ProgressBar():
+        client # in globals
+    except NameError:
+        try:
+            if progress_flag:
+                with ProgressBar():
+                    return obj.compute(**kwargs)
+            else:
                 return obj.compute(**kwargs)
+        except AttributeError:
+            return obj
+    try:
+        if progress_flag:
+            obj = client.gather(client.persist(obj))
+            progress(obj)
+            return obj
         else:
-            return obj.compute(**kwargs)
+            return client.compute(obj)
     except AttributeError:
         return obj
     
