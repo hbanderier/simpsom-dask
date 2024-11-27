@@ -1,6 +1,5 @@
 from typing import Union, Callable, Tuple, Any
 from collections.abc import Sequence
-from nptyping import NDArray
 
 import numpy as np
 from loguru import logger
@@ -33,7 +32,7 @@ class Neighborhoods:
 
     def compute_distances(
         self, dist_type: str | Sequence[str] = "grid"
-    ) -> NDArray:
+    ) -> np.ndarray:
         if not isinstance(dist_type, str):
             self.sub_dist_type = dist_type[1]
             self.dist_type = dist_type[0]
@@ -61,9 +60,9 @@ class Neighborhoods:
 
     def cartesian_distances(
         self,
-        a: NDArray,
-        b: NDArray,
-    ) -> NDArray:
+        a: np.ndarray,
+        b: np.ndarray,
+    ) -> np.ndarray:
         self.dx = np.abs(b[:, None, 0] - a[None, :, 0])
         self.dy = np.abs(b[:, None, 1] - a[None, :, 1])
         if self.PBC:
@@ -83,8 +82,8 @@ class Neighborhoods:
         return np.sqrt(self.dx ** 2 + self.dy ** 2)
 
     def hexagonal_grid_distance(
-        self, xi: NDArray, yi: NDArray, xj: NDArray, yj: NDArray
-    ) -> Tuple[NDArray, NDArray]:
+        self, xi: np.ndarray, yi: np.ndarray, xj: np.ndarray, yj: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         dy = yj[None, :] - yi[:, None]
         dx = xj[None, :] - xi[:, None]
         corr = yj[None, :] // 2 - yi[:, None] // 2
@@ -102,8 +101,8 @@ class Neighborhoods:
         return dx, dy
 
     def rectangular_grid_distance(
-        self, xi: NDArray, yi: NDArray, xj: NDArray, yj: NDArray
-    ) -> NDArray:
+        self, xi: np.ndarray, yi: np.ndarray, xj: np.ndarray, yj: np.ndarray
+    ) -> np.ndarray:
         dy = np.abs(yj[None, :] - yi[:, None])
         dx = np.abs(xj[None, :] - xi[:, None])
         if self.PBC:
@@ -114,8 +113,8 @@ class Neighborhoods:
         return dx, dy
 
     def grid_distance(
-        self, i: NDArray, j: NDArray
-    ) -> NDArray:
+        self, i: np.ndarray, j: np.ndarray
+    ) -> np.ndarray:
         ndim = 0
         i, j = np.asarray(i), np.asarray(j)
         nx, ny = self.width, self.height
@@ -146,15 +145,15 @@ class Neighborhoods:
             return all_dists.flatten()
         return all_dists
 
-    def gaussian(self, c: NDArray, denominator: float) -> NDArray:
+    def gaussian(self, c: np.ndarray, denominator: float) -> np.ndarray:
         """Gaussian neighborhood function.
 
         Args:
-            c (NDArray): center points.
+            c (np.ndarray): center points.
             denominator (float): the 2sigma**2 value.
 
         Returns
-            (NDArray): neighbourhood function between the points in c and all points.
+            (np.ndarray): neighbourhood function between the points in c and all points.
         """
         if self.dist_type == 'cartesian':
             thetax = np.exp(-np.power(self.dx[c], 2) / denominator) / np.sqrt(denominator * np.pi)
@@ -162,15 +161,15 @@ class Neighborhoods:
             return thetax * thetay
         return np.exp(-np.power(self.distances[c], 2) / denominator) / np.sqrt(denominator * np.pi)
 
-    def mexican_hat(self, c: NDArray, denominator: float) -> NDArray:
+    def mexican_hat(self, c: np.ndarray, denominator: float) -> np.ndarray:
         """Mexican hat neighborhood function.
 
         Args:
-            c (NDArray): center points.
+            c (np.ndarray): center points.
             denominator (float): the 2sigma**2 value.
 
         Returns
-            (NDArray): neighbourhood function between the points in c and all points.
+            (np.ndarray): neighbourhood function between the points in c and all points.
         """
         if self.dist_type == 'cartesian':
             thetax = np.power(self.dx[c], 2)
@@ -180,14 +179,14 @@ class Neighborhoods:
             theta = np.power(self.distances[c], 2)
         return (1 - 2 * theta / denominator) * np.exp(- theta / denominator)
 
-    def bubble(self, c: NDArray, threshold: float) -> NDArray:
+    def bubble(self, c: np.ndarray, threshold: float) -> np.ndarray:
         """Bubble neighborhood function.
 
         Args:
-            c (NDArray): center points.
+            c (np.ndarray): center points.
             threshold (float): the bubble threshold.
         Returns
-            (NDArray): neighbourhood function between the points in c and all points.
+            (np.ndarray): neighbourhood function between the points in c and all points.
         """
         if self.dist_type == 'cartesian':
             return (self.dx[c] < threshold).astype(np.float32) * (self.dy[c] < threshold).astype(np.float32)
@@ -195,10 +194,10 @@ class Neighborhoods:
 
     def neighborhood_caller(
         self,
-        centers: NDArray | None = None,
+        centers: np.ndarray | None = None,
         sigma: float = 0.1,
         neigh_func: str = "gaussian",
-    ) -> NDArray:
+    ) -> np.ndarray:
 
         d = 2 * sigma ** 2
         if centers is None:

@@ -12,7 +12,6 @@ from datetime import timedelta
 import pickle
 import os
 
-from networkx import dag_longest_path
 import numpy as np
 from tqdm import trange, tqdm
 

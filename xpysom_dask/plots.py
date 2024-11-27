@@ -1,5 +1,4 @@
 from typing import Union, Collection, Tuple, Literal, Any
-from nptyping import NDArray
 
 import numpy as np
 import matplotlib as mpl
@@ -260,7 +259,7 @@ def plot_map(
     return fig, ax
 
 
-def create_outer_grid(nx: int, ny: int, polygons: str = "hexagons") -> Tuple[NDArray]:
+def create_outer_grid(nx: int, ny: int, polygons: str = "hexagons") -> Tuple[np.ndarray]:
     nei = Neighborhoods(nx + 8, ny + 8, polygons, PBC=False)
     othernei = Neighborhoods(nx, ny, polygons, PBC=True)
     coords = nei.coordinates
@@ -292,11 +291,11 @@ def create_outer_grid(nx: int, ny: int, polygons: str = "hexagons") -> Tuple[NDA
 
 
 def traj_to_segments(
-    traj_split: NDArray,
-    coords: NDArray,
-    grid: NDArray,
-    outermask: NDArray,
-) -> Tuple[NDArray, list]:
+    traj_split: np.ndarray,
+    coords: np.ndarray,
+    grid: np.ndarray,
+    outermask: np.ndarray,
+) -> Tuple[np.ndarray, list]:
     segments = []
     reps = []
     prev = coords[~outermask][traj_split[0][-1]]
@@ -327,7 +326,7 @@ def traj_to_segments(
     return segments, reps
 
 
-def segments_to_arcs(segments: NDArray, n_points: int = 50) -> Tuple[NDArray, list]:
+def segments_to_arcs(segments: np.ndarray, n_points: int = 50) -> Tuple[np.ndarray, list]:
     midpoints = 0.5 * (segments[:, 0, :] + segments[:, 1, :])
     tangents = 0.5 * (segments[:, 1, :] - segments[:, 0, :])
     norm_tangents = np.linalg.norm(tangents, axis=-1)
@@ -555,10 +554,10 @@ def plt_traj_hotspell(
 def add_clusters(
     fig: Figure,
     ax: Axes,
-    coords: NDArray,
-    clu_labs: NDArray,
+    coords: np.ndarray,
+    clu_labs: np.ndarray,
     polygons: str = "hexagons",
-    cmap: str | Colormap | list | NDArray = None,
+    cmap: str | Colormap | list | np.ndarray = None,
 ) -> Tuple[Figure, Axes]:
     unique_labs = np.unique(clu_labs)
     sym = np.any(unique_labs < 0)
@@ -568,7 +567,7 @@ def add_clusters(
     if isinstance(cmap, str):
         cmap = mpl.colormaps[cmap]
     nabove = np.sum(unique_labs > 0)
-    if isinstance(cmap, list | NDArray):
+    if isinstance(cmap, list | np.ndarray):
         colors = cmap
     else:
         if sym:
