@@ -154,7 +154,7 @@ def draw_polygons(
         alphas = [alphas] * len(feature)
 
     if linewidths is None:
-        linewidths = 1.0
+        linewidths = 0.0
 
     if isinstance(linewidths, int | float):
         linewidths = [linewidths] * len(feature)
