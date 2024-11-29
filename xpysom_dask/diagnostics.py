@@ -70,7 +70,7 @@ def compute_residence_time(
     pvalues = []
     for i in range(n_nodes):
         mean_lengths.append(xp.mean(all_lenghts_flat[i]))
-        max_each_year = xp.asarray([xp.quantile(all_lengths[i][j], q=q) for j in range(len(all_lengths[i]))])
+        max_each_year = xp.asarray([xp.quantile(all_lengths_, q=q) for all_lengths_ in all_lengths[i]])
         max_lengths.append(xp.amax(max_each_year))
         mask = max_each_year != 0
         trend, _, _, pvalue, _ = linregress(xp.arange(len(all_lengths[i]))[mask], max_each_year[mask])
@@ -80,7 +80,7 @@ def compute_residence_time(
     max_lengths = xp.asarray(max_lengths)
     trend_lengths = xp.asarray(trend_lengths)
     pvalues = xp.asarray(pvalues)
-    return _get(mean_lengths), _get(max_lengths), _get(trend_lengths), _get(pvalues)
+    return _get(mean_lengths), _get(max_lengths), _get(trend_lengths), _get(pvalues), all_lengths
 
 
 def compute_autocorrelation(

@@ -14,6 +14,7 @@ import os
 
 import numpy as np
 from tqdm import trange, tqdm
+from sklearn.metrics import pairwise_distances # better optimized when x=y
 
 try:
     # Cupy needs to be imported first.
@@ -823,6 +824,22 @@ class XPySom:
             xp=self.xp,
         )
     
+    def compute_residence_time_real_sigma(
+        self, data = None, smooth_sigma_quantile: float = 0.1, yearbreaks: int = 92, q: float = 0.95
+    ):
+        winners = compute(self.predict(data))
+        pairwise = pairwise_distances(self.weights)
+        smooth_sigma = np.quantile(pairwise[pairwise > 0], smooth_sigma_quantile)
+        return compute_residence_time(
+            winners,
+            self.n_nodes,
+            pairwise,
+            smooth_sigma=smooth_sigma,
+            yearbreaks=yearbreaks,
+            q=q,
+            xp=self.xp,
+        )
+        
     def compute_autocorrelation(self, data = None, lag_max: int = 50):
         winners = compute(self.predict(data))
         return compute_autocorrelation(
