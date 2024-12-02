@@ -159,8 +159,9 @@ def draw_polygons(
         linewidths = [linewidths] * len(feature)
         
     if discretify:
-        symmetric = infer_direction(feature) == 0
-        levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.amin(feature), np.amax(feature))
+        symmetric = infer_direction(np.nan_to_num(feature)) == 0
+        levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(feature), np.nanmax(feature))
+        
         norm = BoundaryNorm(levels, cmap.N)
 
     for x, y, f, ec, alpha, linewidth in zip(
