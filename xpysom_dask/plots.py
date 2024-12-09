@@ -105,6 +105,7 @@ def draw_polygons(
     centers: Collection[float],
     feature: Collection[float],
     ax: Axes = None,
+    numbering: bool = False,
     cmap: ListedColormap | None | str = None,
     norm: Normalize | None = None,
     edgecolors: Tuple[float] | Collection[Tuple] = None,
@@ -161,7 +162,6 @@ def draw_polygons(
     if discretify:
         symmetric = infer_direction(np.nan_to_num(feature)) == 0
         levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(feature), np.nanmax(feature))
-        
         norm = BoundaryNorm(levels, cmap.N)
 
     for x, y, f, ec, alpha, linewidth in zip(
@@ -192,6 +192,15 @@ def draw_polygons(
     ax.set_ylim(ypoints.min() - dy, ypoints.max() + dy)
     ax.axis("off")
 
+    if numbering:
+        try:
+            cutoff = norm.boundaries[1]
+        except AttributeError:
+            cutoff = np.quantile(feature, 0.2)
+        for i, c in enumerate(centers):
+            x, y = c
+            color = "white" if feature[i] > cutoff else "black"
+            ax.text(x, y, f'${i + 1}$', va='center', ha='center', color=color, fontsize=10)
     return ax
 
 
@@ -203,6 +212,7 @@ def plot_map(
     ax: Axes | None = None,
     draw_cbar: bool = True,
     cbar_kwargs: dict | None = None,
+    numbering: bool = False,
     **kwargs: Tuple
 ) -> Tuple[Figure, Axes]:
     """Plot a 2D SOM
@@ -245,6 +255,7 @@ def plot_map(
         centers,
         feature,
         ax,
+        numbering=numbering,
         cmap=kwargs.get("cmap", colormaps.matter),
         norm=kwargs.get("norm"),
         edgecolors=kwargs.get("edgecolors"),
