@@ -159,8 +159,8 @@ def draw_polygons(
     if isinstance(linewidths, int | float):
         linewidths = [linewidths] * len(feature)
         
+    symmetric = infer_direction(np.nan_to_num(feature)) == 0
     if discretify:
-        symmetric = infer_direction(np.nan_to_num(feature)) == 0
         levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(feature), np.nanmax(feature))
         norm = BoundaryNorm(levels, cmap.N)
 
@@ -199,7 +199,7 @@ def draw_polygons(
             cutoff = np.quantile(feature, 0.2)
         for i, c in enumerate(centers):
             x, y = c
-            color = "white" if feature[i] > cutoff else "black"
+            color = "white" if (feature[i] > cutoff) and not symmetric else "black"
             ax.text(x, y, f'${i + 1}$', va='center', ha='center', color=color, fontsize=10)
     return ax
 
