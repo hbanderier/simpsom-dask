@@ -138,7 +138,6 @@ def draw_polygons(
         cmap = mpl.colormaps[cmap]
     elif cmap is None:
         cmap = plt.get_cmap("viridis")
-    cmap.set_bad(color="#ffffff", alpha=1.0)
 
     if np.isnan(feature).all():
         # edgecolors = "#555555"
@@ -199,7 +198,7 @@ def draw_polygons(
             cutoff = np.quantile(feature, 0.2)
         for i, c in enumerate(centers):
             x, y = c
-            color = "white" if (feature[i] > cutoff) and not symmetric else "black"
+            color = "white" if (feature[i] >= cutoff) and not symmetric else "black"
             ax.text(x, y, f'${i + 1}$', va='center', ha='center', color=color, fontsize=10)
     return ax
 

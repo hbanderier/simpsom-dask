@@ -31,7 +31,7 @@ def compute_transmat(bmus, n_nodes, step: int = 1, yearbreaks: int = 92, xp=defa
         trans_mat[theseind[:, 0], theseind[:, 1]] += counts
         start_point = real_end_point
     trans_mat /= xp.sum(trans_mat, axis=1)[:, None]
-    return _get(compute(xp.nan_to_num(trans_mat, nan=0)))
+    return _get(compute(trans_mat))
 
 
 def compute_residence_time( # old, use the one in persistent_spells.ipynb
