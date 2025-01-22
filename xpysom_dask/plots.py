@@ -162,14 +162,13 @@ def draw_polygons(
     if discretify:
         levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(feature), np.nanmax(feature))
         norm = BoundaryNorm(levels, cmap.N)
-
-    for x, y, f, ec, alpha, linewidth in zip(
-        xpoints, ypoints, feature, edgecolors, alphas, linewidths
+    if norm is not None:
+        colors = cmap(norm(feature))
+    else:
+        colors = cmap(feature)
+    for x, y, color, ec, alpha, linewidth in zip(
+        xpoints, ypoints, colors, edgecolors, alphas, linewidths
     ):
-        if norm is not None:
-            color = cmap(norm(f))
-        else:
-            color = cmap(f)
         patches.append(
             tile(
                 polygons,
@@ -192,13 +191,16 @@ def draw_polygons(
     ax.axis("off")
 
     if numbering:
-        try:
-            cutoff = norm.boundaries[1]
-        except AttributeError:
-            cutoff = np.quantile(feature, 0.2)
+        from matplotlib.colors import rgb_to_hsv
+        
+        vs = rgb_to_hsv(colors[:, :3])[:, -1]
+        if norm is not None:
+            cutoff = np.sort(np.unique(vs))[-2]
+        else:
+            cutoff = np.quantile(vs, 0.8)
         for i, c in enumerate(centers):
             x, y = c
-            color = "white" if (feature[i] >= cutoff) and not symmetric else "black"
+            color = "white" if (vs[i] <= cutoff) and not symmetric else "black"
             ax.text(x, y, f'${i + 1}$', va='center', ha='center', color=color, fontsize=10)
     return ax
 

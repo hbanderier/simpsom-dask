@@ -153,10 +153,10 @@ def get_persistent_spell_times_from_som(
                     .dt.year()
                     .get(pl.arg_where(pl.col("relative_index") == 0).first())
                 )
-                for col in ["time", "relative_index", "value"]
+                for col in ["time", "relative_index", "value", "len"]
             ]
         )
-        .explode(["time", "relative_index", "value"])
+        .explode(["time", "relative_index", "value", "len"])
     )
     if not nojune:
         return out
