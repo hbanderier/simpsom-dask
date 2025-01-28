@@ -266,7 +266,13 @@ def plot_map(
     )
 
     if not np.isnan(feature).all() and (draw_cbar or cbar_kwargs):
+        ticks = cbar_kwargs.pop("ticks", None)
+        ticklabels = cbar_kwargs.pop("ticklabels", None)
+        if ticks is not None:
+            cbar_kwargs = cbar_kwargs | {"ticks": []}
         cbar = plt.colorbar(ax.collections[0], ax=ax, **cbar_kwargs)
+        if ticks is not None:
+            cbar.set_ticks(ticks, labels=ticklabels)        
         cbar.outline.set_visible(False)
 
     return fig, ax
