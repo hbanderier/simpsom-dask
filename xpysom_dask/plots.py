@@ -195,7 +195,10 @@ def draw_polygons(
         
         vs = rgb_to_hsv(colors[:, :3])[:, -1]
         if norm is not None:
-            cutoff = np.sort(np.unique(vs))[-2]
+            try:
+                cutoff = np.sort(np.unique(vs))[-2]
+            except IndexError:
+                cutoff = 0
         else:
             cutoff = np.quantile(vs, 0.8)
         for i, c in enumerate(centers):
