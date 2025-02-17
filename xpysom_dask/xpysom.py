@@ -46,9 +46,9 @@ from sklearn.decomposition import PCA
 
 from .distances import DistanceFunction, euclidean_distance
 from .neighborhoods import Neighborhoods
-from .utils import find_cpu_cores, find_max_cuda_threads, _get, compute, triangulize, normalize
+from .utils import find_cpu_cores, find_max_cuda_threads, _get, compute, triangulize
 from .decays import linear_decay, asymptotic_decay, exponential_decay
-from .diagnostics import *
+from .diagnostics import compute_residence_time, compute_autocorrelation, compute_transmat
 from .plots import plot_map
 
 # In my machine it looks like these are the best performance/memory trade-off.
