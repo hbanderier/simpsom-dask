@@ -6,7 +6,7 @@ try:
 
     default_xp = cp
     _cupy_available = True
-except:
+except ModuleNotFoundError:
     default_xp = np
     _cupy_available = False
 
