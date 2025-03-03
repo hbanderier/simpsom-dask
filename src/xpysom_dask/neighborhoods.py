@@ -2,7 +2,6 @@ from typing import Union, Callable, Tuple, Any
 from collections.abc import Sequence
 
 import numpy as np
-from loguru import logger
 
 
 class Neighborhoods:
@@ -210,7 +209,7 @@ class Neighborhoods:
         elif neigh_func == "bubble":
             return self.bubble(centers, threshold=sigma)
         else:
-            logger.error(
+            print(
                 "{} neighborhood function not recognized.".format(neigh_func)
                 + "Choose among 'gaussian', 'mexican_hat' or 'bubble'."
             )

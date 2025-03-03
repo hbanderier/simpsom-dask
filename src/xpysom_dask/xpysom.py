@@ -34,13 +34,13 @@ try:
     import dask.array as da
     import dask.delayed as dd
     import dask.dataframe as ddf
+    from dask_ml.decomposition import PCA as da_PCA
 
     default_da = True
 except ModuleNotFoundError:
     print("WARNING: Dask Arrays could not be imported")
     default_da = False
 
-from dask_ml.decomposition import PCA as da_PCA
 from sklearn.decomposition import PCA
 
 
