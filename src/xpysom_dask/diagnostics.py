@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import linregress, mode
+from collections.abc import Sequence
 
 try:
     import cupy as cp
@@ -12,10 +13,14 @@ except ModuleNotFoundError:
 
 from .utils import _get, compute
 
-def compute_transmat(bmus, n_nodes, step: int = 1, yearbreaks: int = 92, xp=default_xp):
+def compute_transmat(bmus, n_nodes, step: int = 1, yearbreaks: int | Sequence = 92, xp=default_xp):
+    if isinstance(yearbreaks, int):
+        iterator = range(yearbreaks, len(bmus) + 1, yearbreaks)
+    else:
+        iterator = np.cumsum(yearbreaks)
     trans_mat = xp.zeros((n_nodes, n_nodes))
     start_point = 0
-    for end_point in range(yearbreaks, len(bmus) + 1, yearbreaks):
+    for end_point in iterator:
         real_end_point = min(end_point, len(bmus) - 1)
         theseind = xp.vstack(
             [
@@ -104,6 +109,9 @@ def compute_autocorrelation(
     lag_max: int = 50,
     xp=default_xp,
 ):
+    """
+        TODO: handle yearbreak and variable yearbreaks for two step clustering, i.e. yearbreaks as Sequence
+    """
     series = indices[None, :] == xp.arange(n_nodes)[:, None]
     autocorrs = []
     for i in range(lag_max):

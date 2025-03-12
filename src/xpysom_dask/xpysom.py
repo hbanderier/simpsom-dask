@@ -804,7 +804,7 @@ class XPySom:
             winmap[position] = Counter(winmap[position])
         return winmap
 
-    def compute_transmat(self, data = None, step: int = 1, yearbreaks: int = 92):
+    def compute_transmat(self, data = None, step: int = 1, yearbreaks: int | Sequence = 92):
         winners = compute(self.predict(data))
         return compute_transmat(
             winners, self.n_nodes, step=step, yearbreaks=yearbreaks, xp=self.xp
