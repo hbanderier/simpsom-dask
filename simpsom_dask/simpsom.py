@@ -1,19 +1,14 @@
-from math import sqrt, ceil
-from collections import defaultdict
 from functools import partial, wraps
 from pathlib import Path
 from warnings import warn
 from collections import defaultdict, Counter
-from typing import Callable, Iterable, Sequence, Literal
-from warnings import warn
+from typing import Sequence, Literal
 from sys import stdout
 from time import time
 from datetime import timedelta
-import pickle
-import os
 
 import numpy as np
-from tqdm import trange, tqdm
+from tqdm import trange
 from sklearn.metrics import pairwise_distances # better optimized when x=y
 
 try:
@@ -83,7 +78,7 @@ def print_progress(t, T):
         stdout.write(progress)
 
 
-class XPySom:
+class Simpsom:
     def __init__(
         self,
         x,

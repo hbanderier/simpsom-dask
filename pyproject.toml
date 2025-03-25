@@ -3,19 +3,31 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xpysom-dask"
+name = "simpsom-dask"
 version = "1.0.1"
 authors = [
-  { name="Example Author", email="author@example.com" },
+  { name="Hugo Banderier", email="hugo.banderier@unibe.ch" },
 ]
-description = "Fork of jcfaracco/xpysom-dask"
+description = "A mix of jcfaracco/xpysom-dask and fcomitani/simpsom, with heavy modifications"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "matplotlib",
+  "colormaps",
+  "scikit_learn",
+  "scipy",
+  "tqdm",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "License :: OSI Approved :: MIT License",
 ]
+
+[project.optional-dependencies]
+daskml = ["dask", "dask_ml"]
+gpu = ["cupy", "cudf"]
 
 [project.urls]
 Homepage = "https://github.com/hbanderier/xpysom-dask"

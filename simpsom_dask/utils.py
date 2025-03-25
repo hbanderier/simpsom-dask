@@ -1,4 +1,3 @@
-import subprocess
 import multiprocessing
 try:
     from dask.diagnostics import ProgressBar
