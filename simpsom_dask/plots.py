@@ -56,9 +56,9 @@ def infer_direction(to_plot: Any) -> int:
 
 def tile(
     polygons: str,
-    coor: Tuple[float],
+    coor: Tuple[float, float],
     color: Tuple[float],
-    edgecolor: Tuple[float] = None,
+    edgecolor: Tuple[float] | None = None,
     alpha: float = 0.1,
     linewidth: float = 1.0,
 ) -> RegularPolygon:
@@ -102,15 +102,15 @@ def tile(
 def draw_polygons(
     polygons: str,
     fig: Figure,
-    centers: Collection[float],
-    feature: Collection[float],
-    ax: Axes = None,
+    centers: np.ndarray,
+    feature: np.ndarray,
+    ax: Axes | None = None,
     numbering: bool = False,
-    cmap: ListedColormap | None | str = None,
+    cmap: Colormap | None | str = None,
     norm: Normalize | None = None,
-    edgecolors: Tuple[float] | Collection[Tuple] = None,
-    alphas: Collection[float] | float | int = None,
-    linewidths: Collection[float] | float | int = 1.0,
+    edgecolors: Tuple[float] | Collection[Tuple] | None = None,
+    alphas: list[float] | float | int | None = None,
+    linewidths: list[float] | float | int = 1.0,
     discretify: bool = True,
 ) -> Axes:
     """Draw a grid based on the selected tiling, nodes positions and color the tiles according to a given feature.
