@@ -87,8 +87,8 @@ class Neighborhoods:
         dx = xj[None, :] - xi[:, None]
         corr = yj[None, :] // 2 - yi[:, None] // 2
         if self.PBC:
-            maskx = np.abs(dx) > (self.width / 2)
-            masky = np.abs(dy) > (self.height / 2)
+            maskx = np.abs(dx) >= (self.width / 2)
+            masky = np.abs(dy) >= (self.height / 2)
             dx[maskx] = -np.sign(dx[maskx]) * (self.width - np.abs(dx[maskx]))
             dy[masky] = -np.sign(dy[masky]) * (
                 self.height - np.abs(dy[masky])

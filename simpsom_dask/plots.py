@@ -196,7 +196,7 @@ def draw_polygons(
         vs = rgb_to_hsv(colors[:, :3])[:, -1]
         if norm is not None:
             try:
-                cutoff = np.sort(np.unique(vs))[-2]
+                cutoff = np.sort(np.unique(vs))[-1]
             except IndexError:
                 cutoff = 0
         else:
