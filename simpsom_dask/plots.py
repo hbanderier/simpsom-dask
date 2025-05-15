@@ -15,21 +15,6 @@ from scipy.interpolate import LinearNDInterpolator
 from .neighborhoods import Neighborhoods
 import colormaps
 
-TEXTWIDTH_IN = 0.0138889 * 503.61377
-
-mpl.rcParams["font.size"] = 11
-mpl.rcParams["axes.titlesize"] = 11
-mpl.rcParams["axes.labelsize"] = 11
-mpl.rcParams["xtick.labelsize"] = 11
-mpl.rcParams["ytick.labelsize"] = 11
-mpl.rcParams["legend.fontsize"] = 11
-mpl.rcParams["figure.titlesize"] = 11
-mpl.rcParams["figure.dpi"] = 100
-mpl.rcParams["savefig.dpi"] = 300
-mpl.rcParams["savefig.bbox"] = "tight"
-mpl.rcParams["text.usetex"] = False
-mpl.rcParams["animation.ffmpeg_path"] = r"~/mambaforge/envs/env11/bin/ffmpeg"
-
 
 def degcos(x: float) -> float:
     return np.cos(x / 180 * np.pi)
