@@ -39,12 +39,12 @@ except ModuleNotFoundError:
 from sklearn.decomposition import PCA
 
 
-from .distances import DistanceFunction, euclidean_distance
-from .neighborhoods import Neighborhoods
-from .utils import find_cpu_cores, find_max_cuda_threads, _get, compute, triangulize
-from .decays import linear_decay, asymptotic_decay, exponential_decay
-from .diagnostics import compute_residence_time, compute_autocorrelation, compute_transmat
-from .plots import plot_map
+from simpsom_dask.distances import DistanceFunction, euclidean_distance
+from simpsom_dask.neighborhoods import Neighborhoods
+from simpsom_dask.utils import find_cpu_cores, find_max_cuda_threads, _get, compute, triangulize
+from simpsom_dask.decays import linear_decay, asymptotic_decay, exponential_decay
+from simpsom_dask.diagnostics import compute_residence_time, compute_autocorrelation, compute_transmat
+from simpsom_dask.plots import plot_map
 
 # In my machine it looks like these are the best performance/memory trade-off.
 # As a rule of thumb, executing more items at a time does not decrease
@@ -294,7 +294,7 @@ class Simpsom:
     def _init_weights(self, data) -> None:
         rng = np.random.default_rng()
         if self.init == "pca":
-            if isinstance(data, da.core.Array):
+            if isinstance(data, da.Array):
                 pca = da_PCA
             else:
                 pca = PCA
@@ -425,7 +425,7 @@ class Simpsom:
             denominator_gpu != 0, numerator_gpu / denominator_gpu, weights_gpu
         )
 
-    def train(self, data, num_epochs, iter_beg=0, iter_end=None, verbose=False, out_path: Path = None):
+    def train(self, data, num_epochs, iter_beg=0, iter_end=None, verbose=False, out_path: Path | None = None):
         """Trains the SOM.
 
         Parameters
@@ -470,16 +470,16 @@ class Simpsom:
                 data_gpu_block = da.from_array(data, chunks=self.dask_chunks)
             else:
                 data_gpu = data
-        elif default_da and isinstance(data, ddf.core.DataFrame):
+        elif default_da and isinstance(data, ddf.DataFrame):
             if self.use_dask:
                 data_gpu_block = data.to_dask_array()
             else:
                 data_gpu = compute(data.to_dask_array())
-        elif GPU_SUPPORTED and isinstance(data, dcudf.core.DataFrame):
+        elif GPU_SUPPORTED and isinstance(data, dcudf.DataFrame):
             if self.use_dask:
                 data_gpu = data.to_dask_array()
             data_gpu = compute(data)
-        elif default_da and isinstance(data, da.core.Array):
+        elif default_da and isinstance(data, da.Array):
             if self.use_dask:
                 data_gpu_block = data
             else:
@@ -615,7 +615,7 @@ class Simpsom:
 
         orig_shape = x_gpu.shape
         if len(orig_shape) == 1:
-            if isinstance(x_gpu, da.core.Array):
+            if isinstance(x_gpu, da.Array):
                 x_gpu = compute(da.expand_dims(x_gpu, axis=0))
             else:
                 x_gpu = self.xp.expand_dims(x_gpu, axis=0)
@@ -632,7 +632,7 @@ class Simpsom:
 
         winners_gpu = self.xp.hstack(winners_chunks)
 
-        return _get(compute(winners_gpu), progress_flag=True)
+        return _get(compute(winners_gpu, progress_flag=True))
 
     def quantization(self, x = None):
         """Assigns a code book (weights vector of the winning neuron)
@@ -671,7 +671,7 @@ class Simpsom:
         self._check_input_len(data)
 
         if self.use_dask:
-            if default_da and isinstance(data, da.core.Array):
+            if default_da and isinstance(data, da.Array):
                 data_gpu = data
             else:
                 data_gpu = da.from_array(
@@ -729,7 +729,7 @@ class Simpsom:
         distances = self._distance_from_weights(data_gpu, weights_gpu)
 
         # b2mu: best 2 matching units
-        if isinstance(distances, da.core.Array):
+        if isinstance(distances, da.Array):
             b2mu_inds = compute(da.argtopk(distances, k=-2, axis=1))
         else:
             b2mu_inds = self.xp.argsort(distances, axis=1)[:, :2]
@@ -824,7 +824,7 @@ class Simpsom:
     ):
         winners = compute(self.predict(data))
         pairwise = pairwise_distances(self.weights)
-        smooth_sigma = np.quantile(pairwise[pairwise > 0], smooth_sigma_quantile)
+        smooth_sigma = np.quantile(pairwise[pairwise > 0], smooth_sigma_quantile).item()
         return compute_residence_time(
             winners,
             self.n_nodes,

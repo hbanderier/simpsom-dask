@@ -18,6 +18,10 @@ dependencies = [
   "scikit_learn",
   "scipy",
   "tqdm",
+  "dask>=2025.5.0",
+  "jupyter>=1.1.1",
+  "autoreload>=0.1.2",
+  "ipython>=9.2.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -1,4 +1,4 @@
-from typing import Union, Collection, Tuple, Literal, Any
+from typing import Collection, Tuple, Literal, Any
 
 import numpy as np
 import matplotlib as mpl
@@ -6,15 +6,14 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.ticker import MaxNLocator
-from matplotlib.colors import Colormap, ListedColormap, Normalize, BoundaryNorm
+from matplotlib.colors import Colormap, Normalize, BoundaryNorm
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import PatchCollection, LineCollection
-from matplotlib.patches import RegularPolygon, FancyArrowPatch
+from matplotlib.patches import RegularPolygon, FancyArrowPatch, Polygon
 from itertools import product
 from scipy.interpolate import LinearNDInterpolator
-from .neighborhoods import Neighborhoods
+from simpsom_dask.neighborhoods import Neighborhoods
 import colormaps
-
 
 def degcos(x: float) -> float:
     return np.cos(x / 180 * np.pi)
@@ -40,13 +39,13 @@ def infer_direction(to_plot: Any) -> int:
 
 
 def tile(
-    polygons: str,
+    polygons: Literal["rectangles", "hexagons", "halfhexleft", "halfhexright"],
     coor: Tuple[float, float],
     color: Tuple[float],
     edgecolor: Tuple[float] | None = None,
     alpha: float = 0.1,
     linewidth: float = 1.0,
-) -> RegularPolygon:
+) -> Polygon | RegularPolygon | None:
     """Set the tile shape for plotting.
 
     Args:
@@ -58,7 +57,7 @@ def tile(
     Returns:
         (matplotlib patch object): the tile to add to the plot.
     """
-    if polygons.lower() == "rectangle":
+    if polygons.lower() == "rectangles":
         return RegularPolygon(
             coor,
             numVertices=4,
@@ -80,16 +79,45 @@ def tile(
             alpha=alpha,
             linewidth=linewidth,
         )
+    elif polygons.lower() == "halfhexleft":
+        poly = RegularPolygon(
+            coor,
+            numVertices=6,
+            radius=0.95 / np.sqrt(3),
+            orientation=np.radians(0)
+        )
+        return Polygon(
+            poly.get_verts()[:4],
+            facecolor=color,
+            edgecolor=edgecolor,
+            alpha=alpha,
+            linewidth=linewidth,
+        )
+    elif polygons.lower() == "halfhexright":
+        poly = RegularPolygon(
+            coor,
+            numVertices=6,
+            radius=0.95 / np.sqrt(3),
+            orientation=np.radians(0)
+        )
+        return Polygon(
+            poly.get_verts()[3:],
+            facecolor=color,
+            edgecolor=edgecolor,
+            alpha=alpha,
+            linewidth=linewidth,
+        )
     else:
         raise NotImplementedError("Only hexagons and rectangles")
 
 
 def draw_polygons(
-    polygons: str,
+    polygons: Literal["rectangles", "hexagons"],
     fig: Figure,
-    centers: np.ndarray,
-    feature: np.ndarray,
-    ax: Axes | None = None,
+    ax: Axes,
+    centers: np.ndarray | list,
+    feature: np.ndarray | list,
+    feature2: np.ndarray | list | None = None,
     numbering: bool = False,
     cmap: Colormap | None | str = None,
     norm: Normalize | None = None,
@@ -112,12 +140,11 @@ def draw_polygons(
     Returns:
         ax (matplotlib axis object): the axis on which the hexagonal grid has been plotted.
     """
-    if ax is None:
-        ax = fig.add_subplot(111, aspect="equal")
     centers = np.asarray(centers)
     xpoints = centers[:, 0]
     ypoints = centers[:, 1]
     patches = []
+    big_feature = feature.copy() if feature2 is None else np.concatenate([feature, feature2])
 
     if isinstance(cmap, str):
         cmap = mpl.colormaps[cmap]
@@ -129,45 +156,83 @@ def draw_polygons(
         discretify = False
 
     if isinstance(edgecolors, str) or (edgecolors is None) or (len(edgecolors) == 3):
-        edgecolors = [edgecolors] * len(feature)
+        edgecolors = [edgecolors] * big_feature.shape[0]
 
     if alphas is None:
         alphas = 1.0
 
     if isinstance(alphas, int | float):
-        alphas = [alphas] * len(feature)
+        alphas = [alphas] * big_feature.shape[0]
 
     if linewidths is None:
         linewidths = 0.0
 
     if isinstance(linewidths, int | float):
-        linewidths = [linewidths] * len(feature)
-        
-    symmetric = infer_direction(np.nan_to_num(feature)) == 0
+        linewidths = [linewidths] * big_feature.shape[0]
+
+    symmetric = infer_direction(np.nan_to_num(big_feature)) == 0
     if discretify:
-        levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(feature), np.nanmax(feature))
+        levels = MaxNLocator(7 if symmetric else 5, symmetric=symmetric).tick_values(np.nanmin(big_feature), np.nanmax(big_feature))
         norm = BoundaryNorm(levels, cmap.N)
-    if norm is not None:
+    if norm is not None and feature2 is None:
         colors = cmap(norm(feature))
+    elif norm is not None:
+        colors = cmap(norm(feature))
+        colors2 = cmap(norm(feature2))
+    elif feature2 is None:
+        colors = cmap(feature)
     else:
         colors = cmap(feature)
-    for x, y, color, ec, alpha, linewidth in zip(
-        xpoints, ypoints, colors, edgecolors, alphas, linewidths
-    ):
-        patches.append(
-            tile(
-                polygons,
-                (x, y),
-                color=color,
-                edgecolor=ec,
-                alpha=alpha,
-                linewidth=linewidth,
+        colors2 = cmap(feature2)
+    if feature2 is None:
+        for x, y, color, ec, alpha, linewidth in zip(
+            xpoints, ypoints, colors, edgecolors, alphas, linewidths
+        ):
+            patches.append(
+                tile(
+                    polygons,
+                    (x, y),
+                    color=color,
+                    edgecolor=ec,
+                    alpha=alpha,
+                    linewidth=linewidth,
+                )
             )
-        )
+        pc = PatchCollection(patches, match_original=True, cmap=cmap, norm=norm)
+        pc.set_array(np.array(feature))
+        pc.set_alpha(alphas)
+    else:
+        for x, y, color, ec, alpha, linewidth in zip(
+            xpoints, ypoints, colors, edgecolors, alphas, linewidths
+        ):
+            patches.append(
+                tile(
+                    "halfhexleft",
+                    (x, y),
+                    color=color,
+                    edgecolor=ec,
+                    alpha=alpha,
+                    linewidth=linewidth,
+                )
+            )
+        
+        for x, y, color2, ec, alpha, linewidth in zip(
+            xpoints, ypoints, colors2, edgecolors, alphas, linewidths
+        ):
+            patches.append(
+                tile(
+                    "halfhexright",
+                    (x, y),
+                    color=color2,
+                    edgecolor=ec,
+                    alpha=alpha,
+                    linewidth=linewidth,
+                )
+            )
+        pc = PatchCollection(patches, match_original=True, cmap=cmap, norm=norm)
+        pc.set_array(np.concatenate([feature, feature2]))
+        pc.set_alpha(alphas)
 
-    pc = PatchCollection(patches, match_original=True, cmap=cmap, norm=norm)
-    pc.set_array(np.array(feature))
-    pc.set_alpha(alphas)
     ax.add_collection(pc)
 
     dy = 1 / np.sqrt(3) if polygons == "hexagons" else 1 / np.sqrt(2)
@@ -194,9 +259,10 @@ def draw_polygons(
 
 
 def plot_map(
-    centers: Collection[np.ndarray],
-    feature: Collection[np.ndarray],
-    polygons: str,
+    centers: list | np.ndarray,
+    feature: list | np.ndarray,
+    feature2: list | np.ndarray | None = None,
+    polygons: Literal["rectangles", "hexagons"] = "hexagons",
     fig: Figure | None = None,
     ax: Axes | None = None,
     draw_cbar: bool = True,
@@ -236,14 +302,15 @@ def plot_map(
     if (cbar_kwargs or draw_cbar) and "shrink" not in cbar_kwargs:
         cbar_kwargs["shrink"] = 0.8
 
-    if fig is None:
+    if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=(kwargs["figsize"][0], kwargs["figsize"][1]), subplot_kw=dict(aspect="equal"))
     ax = draw_polygons(
         polygons,
         fig,
+        ax,
         centers,
         feature,
-        ax,
+        feature2,
         numbering=numbering,
         cmap=kwargs.get("cmap", colormaps.matter),
         norm=kwargs.get("norm"),
@@ -383,8 +450,8 @@ def segments_to_arcs(segments: np.ndarray, n_points: int = 50) -> Tuple[np.ndarr
     for x1, y1, dx, dy in zip(x1_arrow, y1_arrow, dx_arrow, dy_arrow):
         arrows.append(
             FancyArrowPatch(
-                [x1, y1],
-                [x1 + dx, y1 + dy],
+                (x1, y1),
+                (x1 + dx, y1 + dy),
                 arrowstyle="wedge,tail_width=0.1,shrink_factor=0.4",
             )
         )
