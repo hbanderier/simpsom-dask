@@ -861,7 +861,8 @@ class Simpsom:
     
     def plot_on_map(
         self,
-        data,
+        data: np.ndarray | list,
+        data2: np.ndarray | list | None = None,
         smooth_sigma: float = 0,
         fig = None,
         ax = None,
@@ -887,7 +888,8 @@ class Simpsom:
         fig, ax = plot_map(
             self.neighborhoods.coordinates,
             data,
-            self.polygons,
+            data2,
+            polygons=self.polygons,
             fig=fig,
             ax=ax,
             draw_cbar=draw_cbar,
