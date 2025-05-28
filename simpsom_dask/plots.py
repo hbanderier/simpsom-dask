@@ -1,6 +1,7 @@
 from typing import Collection, Tuple, Literal, Any
 
 import numpy as np
+import xarray as xr
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -459,7 +460,7 @@ def segments_to_arcs(segments: np.ndarray, n_points: int = 50) -> Tuple[np.ndarr
 
 
 def plt_traj_hotspell(
-    width: int, height: int, hotspell, bmus_da, da_T_region = None
+    width: int, height: int, hotspell: xr.DataArray | np.ndarray, bmus_da: xr.DataArray | np.ndarray, da_T_region: xr.DataArray | None = None, circle_size_ratio: float = 30.,
 ):
     n_nodes = width * height
     traj_da = bmus_da.loc[hotspell]
@@ -523,7 +524,7 @@ def plt_traj_hotspell(
     fig, ax = plot_map(
         coords,
         populations,
-        "hexagons",
+        polygons="hexagons",
         draw_cbar=False,
         figsize=(15 * width / height, 13.5),
         show=False,
@@ -549,7 +550,7 @@ def plt_traj_hotspell(
     new_uniques = uniques[sort_like]
     sizes = sizes[sort_like]
     colors = colors[:-1][sort_like]
-    ax.scatter(*coords[~outermask][new_uniques].T, s=100 * sizes, c=colors, zorder=10)
+    ax.scatter(*coords[~outermask][new_uniques].T, s=circle_size_ratio * sizes, c=colors, zorder=10)
 
     every = 4 * (len(traj) // 40 + 1)
     list_of_days = np.asarray(np.arange(0, len(traj), every))
