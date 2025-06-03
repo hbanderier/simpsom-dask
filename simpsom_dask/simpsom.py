@@ -699,7 +699,7 @@ class Simpsom:
             weights_gpu = self.xp.array(self.weights)
 
             # recycle buffer
-            data_gpu -= self._quantization(data_gpu, weights_gpu)
+            data_gpu -= self.quantization(data_gpu, weights_gpu)
 
             qe = self.xp.linalg.norm(data_gpu, axis=1).mean().item()
 
